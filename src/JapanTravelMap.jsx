@@ -4,6 +4,254 @@ import "leaflet/dist/leaflet.css";
 import _ from "lodash";
 import { japanTripData } from "./japan-trip-data";
 
+// Convert degrees to radians
+const toRad = (deg) => (deg * Math.PI) / 180;
+// Convert radians to degrees
+const toDeg = (rad) => (rad * 180) / Math.PI;
+
+// Improved great circle calculation that produces the correct northern path
+const calculateGreatCirclePoints = (startLat, startLng, endLat, endLng, numPoints = 100) => {
+  // If the difference in longitudes is more than 180°, adjust the smaller one.
+  let adjustedStartLng = startLng;
+  let adjustedEndLng = endLng;
+  if (Math.abs(startLng - endLng) > 180) {
+    if (startLng > endLng) {
+      // Example: startLng=170, endLng=-170 becomes 170 and 190
+      adjustedEndLng = endLng + 360;
+    } else {
+      // Or vice versa
+      adjustedStartLng = startLng + 360;
+    }
+  }
+  
+  // Convert degrees to radians
+  const lat1 = toRad(startLat);
+  const lon1 = toRad(adjustedStartLng);
+  const lat2 = toRad(endLat);
+  const lon2 = toRad(adjustedEndLng);
+  
+  // Calculate the angular distance (d) using the haversine formula
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.pow(Math.sin((lat2 - lat1) / 2), 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin((lon2 - lon1) / 2), 2)
+  ));
+  
+  const points = [];
+  
+  // If the two points are essentially the same, return copies of the start point.
+  if (d === 0) {
+    for (let i = 0; i <= numPoints; i++) {
+      points.push([startLat, startLng]);
+    }
+    return points;
+  }
+  
+  // Generate points along the great circle using spherical linear interpolation (slerp)
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    
+    const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+    let lon = Math.atan2(y, x);
+    
+    // Convert back to degrees
+    let pointLat = toDeg(lat);
+    let pointLon = toDeg(lon);
+    
+    // Re-normalize longitude to be within -180° to 180°
+    if (pointLon > 180) {
+      pointLon -= 360;
+    } else if (pointLon < -180) {
+      pointLon += 360;
+    }
+    
+    points.push([pointLat, pointLon]);
+  }
+  
+  return points;
+};
+
+// Get colors for different transportation types
+const getRouteColor = (type) => {
+  const colorMap = {
+    flight: "#3388ff",
+    train: "#ff3333",
+    shuttle: "#33cc33",
+    walk: "#ff9900",
+    bus: "#9933cc",
+  };
+  return colorMap[type] || "#999999";
+};
+
+// Create custom icons for markers
+const createCustomIcon = (type, isActive = false) => {
+  const color = getRouteColor(type);
+  return L.divIcon({
+    className: "custom-div-icon",
+    html: `
+      <div style="
+        background-color: ${color}; 
+        width: ${isActive ? "20px" : "16px"}; 
+        height: ${isActive ? "20px" : "16px"}; 
+        border-radius: 50%; 
+        border: ${isActive ? "3px" : "2px"} solid white;
+        box-shadow: 0 0 3px rgba(0,0,0,0.4);
+      "></div>
+    `,
+    iconSize: [isActive ? 26 : 20, isActive ? 26 : 20],
+    iconAnchor: [isActive ? 13 : 10, isActive ? 13 : 10],
+  });
+};
+
+// Create accommodation icon
+const createAccommodationIcon = (isActive = false) => {
+  return L.divIcon({
+    className: "custom-div-icon",
+    html: `
+      <div style="
+        background-color: #8800ff; 
+        width: ${isActive ? "24px" : "20px"}; 
+        height: ${isActive ? "24px" : "20px"}; 
+        border-radius: 50%; 
+        border: ${isActive ? "3px" : "2px"} solid white;
+        box-shadow: 0 0 3px rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+      ">H</div>
+    `,
+    iconSize: [isActive ? 30 : 24, isActive ? 30 : 24],
+    iconAnchor: [isActive ? 15 : 12, isActive ? 15 : 12],
+  });
+};
+
+// Helper function to create copies of markers across world boundaries
+const createWorldCopiedMarker = (lat, lng, icon, popupContent, layerGroup) => {
+  if (!layerGroup) return;
+  
+  // Create marker for primary world view and adjacent copies
+  for (let worldCopy = -1; worldCopy <= 1; worldCopy++) {
+    const lngOffset = worldCopy * 360;
+    
+    L.marker([lat, lng + lngOffset], {
+      icon: icon,
+      // Use non-wrapping for individual markers
+      noWrap: true
+    })
+      .bindPopup(popupContent)
+      .addTo(layerGroup);
+  }
+};
+
+// Split a great circle path into multiple segments at the antimeridian (IDL)
+const calculateGreatCirclePolylines = (startLat, startLng, endLat, endLng, numPoints = 100) => {
+  const points = calculateGreatCirclePoints(startLat, startLng, endLat, endLng, numPoints);
+  
+  const segments = [];
+  let currentSegment = [points[0]];
+  
+  for (let i = 1; i < points.length; i++) {
+    const [lat1, lon1] = points[i - 1];
+    const [lat2, lon2] = points[i];
+    
+    // Check for antimeridian crossing (large longitude jump)
+    if (Math.abs(lon2 - lon1) > 180) {
+      // Calculate the fraction of the way from point i-1 to point i where the antimeridian is crossed
+      const t = (lon1 > 0 ? 180 - lon1 : -180 - lon1) / (lon2 - lon1);
+      
+      // Calculate the latitude at the crossing point (linear interpolation)
+      const latCrossing = lat1 + t * (lat2 - lat1);
+      
+      // Add the point at the antimeridian to current segment
+      currentSegment.push([latCrossing, lon1 > 0 ? 180 : -180]);
+      
+      // Save current segment and start a new one
+      segments.push(currentSegment);
+      
+      // Start new segment with point on the other side of the antimeridian
+      currentSegment = [[latCrossing, lon2 > 0 ? 180 : -180], points[i]];
+    } else {
+      // No crossing, add the point to the current segment
+      currentSegment.push(points[i]);
+    }
+  }
+  
+  // Add the last segment
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+  
+  return segments;
+};
+
+// Helper function to draw flight path with improved great circle
+const drawFlightPathWithGreatCircle = (flight, isActive, layerGroup) => {
+  if (!layerGroup) return;
+
+  const originLat = flight.origin.coordinates[0];
+  const originLng = flight.origin.coordinates[1];
+  const destLat = flight.destination.coordinates[0];
+  const destLng = flight.destination.coordinates[1];
+
+  const numPoints = 200; // Increased for smoother paths
+
+  // Calculate the segments for the original path
+  const segments = calculateGreatCirclePolylines(originLat, originLng, destLat, destLng, numPoints);
+
+  // For each world copy (-1, 0, +1), draw the segments
+  for (let worldCopy = -1; worldCopy <= 1; worldCopy++) {
+    const lngOffset = worldCopy * 360;
+    
+    segments.forEach(pathPoints => {
+      // Create a copy of the path with longitude offset
+      const offsetPathPoints = pathPoints.map(([lat, lng]) => [lat, lng + lngOffset]);
+      
+      L.polyline(offsetPathPoints, {
+        color: getRouteColor("flight"),
+        weight: isActive ? 4 : 2,
+        opacity: 0.7,
+        dashArray: "10, 10",
+        noWrap: true, // Use noWrap: true for the specific line
+      })
+        .bindPopup(`
+          <b>${flight.transport}</b><br>
+          From: ${flight.origin.name}<br>
+          To: ${flight.destination.name}
+        `)
+        .addTo(layerGroup);
+    });
+    
+    // Add markers if this is an active segment
+    if (isActive) {
+      // Origin marker
+      createWorldCopiedMarker(
+        originLat, 
+        originLng, 
+        createCustomIcon("flight", true),
+        `<b>${flight.origin.name}</b>${flight.origin.code ? ` (${flight.origin.code})` : ""}`,
+        layerGroup
+      );
+      
+      // Destination marker
+      createWorldCopiedMarker(
+        destLat, 
+        destLng, 
+        createCustomIcon("flight", true),
+        `<b>${flight.destination.name}</b>${flight.destination.code ? ` (${flight.destination.code})` : ""}`,
+        layerGroup
+      );
+    }
+  }
+};
+
 // Enhanced debugging helper
 const debugLog = (category, message, obj = null) => {
   console.log(`[${category}] ${message}`, obj || "");
@@ -144,22 +392,58 @@ const JapanTravelMap = () => {
     debugLog("MAP_INIT", "Container is ready, initializing map");
     setMapStatus("Creating map...");
 
+    // Updated map initialization for better world wrapping
     try {
-      // Create the map instance
+      // Create the map instance with improved options for world wrapping
       const newMap = L.map(mapContainerRef.current, {
-        center: [36.5, 138.5],
-        zoom: 5,
-        zoomControl: true,
+        center: [30, 0],
+        zoom: 2,
+        worldCopyJump: true, // Helps keep focus when panning
+        continuousWorld: true, // Ensures smooth map movement
+        noWrap: false // Allows for full world wraparound
       });
 
       debugLog("MAP_INIT", "Map instance created successfully");
 
-      // Add tile layer
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
-      }).addTo(newMap);
+      // Add zoom control in a better position (top left but below the view buttons)
+      L.control
+        .zoom({
+          position: "topleft",
+        })
+        .addTo(newMap);
 
-      debugLog("MAP_INIT", "Tile layer added");
+      // Add multiple tile layer options
+      const baseMaps = {
+        Street: L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+          {
+            attribution: "Tiles &copy; Esri",
+          }
+        ).addTo(newMap),
+
+        Terrain: L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+          {
+            attribution: "Tiles &copy; Esri",
+          }
+        ),
+
+        Satellite: L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          {
+            attribution: "Tiles &copy; Esri",
+          }
+        ),
+      };
+
+      // Add layer control in bottom left so it doesn't conflict with the legend
+      L.control
+        .layers(baseMaps, null, {
+          position: "bottomleft",
+        })
+        .addTo(newMap);
+
+      debugLog("MAP_INIT", "Tile layer and controls added");
 
       // Initialize layer groups
       layerGroups.current = {
@@ -207,8 +491,6 @@ const JapanTravelMap = () => {
     );
 
     try {
-      // Ensure layer groups exist before using them
-
       // Check if layer groups need to be recreated
       if (
         !layerGroups.current.flights ||
@@ -235,7 +517,7 @@ const JapanTravelMap = () => {
         debugLog("MAP_UPDATE", "Layer groups recreated");
       }
 
-      // Clear all layers if layer groups are valid
+      // Clear all layers
       Object.values(layerGroups.current).forEach((group) => {
         if (group) {
           try {
@@ -245,63 +527,6 @@ const JapanTravelMap = () => {
           }
         }
       });
-
-      // Get colors for different transportation types
-      const getRouteColor = (type) => {
-        const colorMap = {
-          flight: "#3388ff",
-          train: "#ff3333",
-          shuttle: "#33cc33",
-          walk: "#ff9900",
-          bus: "#9933cc",
-        };
-        return colorMap[type] || "#999999";
-      };
-
-      // Create custom icons for markers
-      const createCustomIcon = (type, isActive = false) => {
-        const color = getRouteColor(type);
-        return L.divIcon({
-          className: "custom-div-icon",
-          html: `
-            <div style="
-              background-color: ${color}; 
-              width: ${isActive ? "20px" : "16px"}; 
-              height: ${isActive ? "20px" : "16px"}; 
-              border-radius: 50%; 
-              border: ${isActive ? "3px" : "2px"} solid white;
-              box-shadow: 0 0 3px rgba(0,0,0,0.4);
-            "></div>
-          `,
-          iconSize: [isActive ? 26 : 20, isActive ? 26 : 20],
-          iconAnchor: [isActive ? 13 : 10, isActive ? 13 : 10],
-        });
-      };
-
-      // Create accommodation icon
-      const createAccommodationIcon = (isActive = false) => {
-        return L.divIcon({
-          className: "custom-div-icon",
-          html: `
-            <div style="
-              background-color: #8800ff; 
-              width: ${isActive ? "24px" : "20px"}; 
-              height: ${isActive ? "24px" : "20px"}; 
-              border-radius: 50%; 
-              border: ${isActive ? "3px" : "2px"} solid white;
-              box-shadow: 0 0 3px rgba(0,0,0,0.4);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              color: white;
-              font-weight: bold;
-              font-size: 12px;
-            ">H</div>
-          `,
-          iconSize: [isActive ? 30 : 24, isActive ? 30 : 24],
-          iconAnchor: [isActive ? 15 : 12, isActive ? 15 : 12],
-        });
-      };
 
       // Apply view based on current mode
       if (viewMode === "world") {
@@ -341,90 +566,26 @@ const JapanTravelMap = () => {
         // Add airport markers
         uniqueAirports.forEach((airport) => {
           if (layerGroups.current.flights) {
-            L.marker([airport.coordinates[0], airport.coordinates[1]], {
-              icon: createCustomIcon("flight"),
-              title: airport.name,
-            })
-              .bindPopup(
-                `<b>${airport.name}</b>${
-                  airport.code ? ` (${airport.code})` : ""
-                }`
-              )
-              .addTo(layerGroups.current.flights);
+            createWorldCopiedMarker(
+              airport.coordinates[0],
+              airport.coordinates[1],
+              createCustomIcon("flight"),
+              `<b>${airport.name}</b>${
+                airport.code ? ` (${airport.code})` : ""
+              }`,
+              layerGroups.current.flights
+            );
           }
         });
 
-        // Add flight routes
+        // Add flight routes with great circle paths
         internationalFlights.forEach((flight) => {
           const isActive = activeSegment && activeSegment.id === flight.id;
           const layerGroup = isActive
             ? layerGroups.current.active
             : layerGroups.current.flights;
 
-          if (layerGroup) {
-            // Flight path
-            L.polyline(
-              [
-                [flight.origin.coordinates[0], flight.origin.coordinates[1]],
-                [
-                  flight.destination.coordinates[0],
-                  flight.destination.coordinates[1],
-                ],
-              ],
-              {
-                color: getRouteColor("flight"),
-                weight: isActive ? 4 : 2,
-                opacity: 0.7,
-                dashArray: "10, 10",
-              }
-            )
-              .bindPopup(
-                `
-              <b>${flight.transport}</b><br>
-              From: ${flight.origin.name}<br>
-              To: ${flight.destination.name}
-            `
-              )
-              .addTo(layerGroup);
-
-            // Add markers if this is the active segment
-            if (isActive) {
-              // Origin marker
-              L.marker(
-                [flight.origin.coordinates[0], flight.origin.coordinates[1]],
-                {
-                  icon: createCustomIcon("flight", true),
-                  title: flight.origin.name,
-                }
-              )
-                .bindPopup(
-                  `<b>${flight.origin.name}</b>${
-                    flight.origin.code ? ` (${flight.origin.code})` : ""
-                  }`
-                )
-                .addTo(layerGroup);
-
-              // Destination marker
-              L.marker(
-                [
-                  flight.destination.coordinates[0],
-                  flight.destination.coordinates[1],
-                ],
-                {
-                  icon: createCustomIcon("flight", true),
-                  title: flight.destination.name,
-                }
-              )
-                .bindPopup(
-                  `<b>${flight.destination.name}</b>${
-                    flight.destination.code
-                      ? ` (${flight.destination.code})`
-                      : ""
-                  }`
-                )
-                .addTo(layerGroup);
-            }
-          }
+          drawFlightPathWithGreatCircle(flight, isActive, layerGroup);
         });
       } else if (viewMode === "japan") {
         debugLog("MAP_UPDATE", "Setting Japan view");
@@ -448,72 +609,80 @@ const JapanTravelMap = () => {
         japanSegments.forEach((segment) => {
           const isActive = activeSegment && activeSegment.id === segment.id;
           const type = segment.type;
-          const layerGroup = isActive
-            ? layerGroups.current.active
-            : layerGroups.current[`${type}s`];
 
-          if (layerGroup) {
-            // Line connecting origin and destination
-            L.polyline(
-              [
-                [segment.origin.coordinates[0], segment.origin.coordinates[1]],
-                [
-                  segment.destination.coordinates[0],
-                  segment.destination.coordinates[1],
-                ],
-              ],
-              {
-                color: getRouteColor(type),
-                weight: isActive ? 4 : 2,
-                opacity: 0.7,
-                dashArray: type === "flight" ? "10, 10" : null,
-              }
-            )
-              .bindPopup(
+          if (type === "flight") {
+            // Handle flights with great circle paths
+            const layerGroup = isActive
+              ? layerGroups.current.active
+              : layerGroups.current.flights;
+
+            drawFlightPathWithGreatCircle(segment, isActive, layerGroup);
+          } else {
+            // Handle other transport types with straight lines
+            const layerGroup = isActive
+              ? layerGroups.current.active
+              : layerGroups.current[`${type}s`];
+
+            if (layerGroup) {
+              // For each world copy, draw the line
+              for (let worldCopy = -1; worldCopy <= 1; worldCopy++) {
+                const lngOffset = worldCopy * 360;
+                
+                // Line connecting origin and destination
+                L.polyline(
+                  [
+                    [
+                      segment.origin.coordinates[0],
+                      segment.origin.coordinates[1] + lngOffset,
+                    ],
+                    [
+                      segment.destination.coordinates[0],
+                      segment.destination.coordinates[1] + lngOffset,
+                    ],
+                  ],
+                  {
+                    color: getRouteColor(type),
+                    weight: isActive ? 4 : 2,
+                    opacity: 0.7,
+                    noWrap: true,
+                  }
+                )
+                  .bindPopup(
+                    `
+                  <b>${segment.transport}</b><br>
+                  From: ${segment.origin.name}<br>
+                  To: ${segment.destination.name}
                 `
-              <b>${segment.transport}</b><br>
-              From: ${segment.origin.name}<br>
-              To: ${segment.destination.name}
-            `
-              )
-              .addTo(layerGroup);
+                  )
+                  .addTo(layerGroup);
+              }
 
-            // Add markers if active or for flights
-            if (isActive || type === "flight") {
-              // Origin marker
-              L.marker(
-                [segment.origin.coordinates[0], segment.origin.coordinates[1]],
-                {
-                  icon: createCustomIcon(type, isActive),
-                  title: segment.origin.name,
-                }
-              )
-                .bindPopup(
+              // Add markers if active
+              if (isActive) {
+                // Origin marker
+                createWorldCopiedMarker(
+                  segment.origin.coordinates[0],
+                  segment.origin.coordinates[1],
+                  createCustomIcon(type, isActive),
                   `<b>${segment.origin.name}</b>${
                     segment.origin.code ? ` (${segment.origin.code})` : ""
-                  }`
-                )
-                .addTo(layerGroup);
+                  }`,
+                  layerGroup
+                );
 
-              // Destination marker
-              L.marker(
-                [
+                // Destination marker
+                createWorldCopiedMarker(
                   segment.destination.coordinates[0],
                   segment.destination.coordinates[1],
-                ],
-                {
-                  icon: createCustomIcon(type, isActive),
-                  title: segment.destination.name,
-                }
-              )
-                .bindPopup(
+                  createCustomIcon(type, isActive),
                   `<b>${segment.destination.name}</b>${
                     segment.destination.code
                       ? ` (${segment.destination.code})`
                       : ""
-                  }`
-                )
-                .addTo(layerGroup);
+                  }`,
+                  layerGroup
+                );
+              }
             }
           }
         });
@@ -521,25 +690,22 @@ const JapanTravelMap = () => {
         // Add stay locations
         if (layerGroups.current.stays) {
           travelData.stays.forEach((stay) => {
-            L.marker([stay.coordinates[0], stay.coordinates[1]], {
-              icon: createAccommodationIcon(),
-              title: stay.location,
-            })
-              .bindPopup(
-                `
-              <b>${stay.location}</b><br>
-              ${stay.notes}<br>
-              ${stay.dateStart} to ${stay.dateEnd}
-            `
-              )
-              .addTo(layerGroups.current.stays);
+            createWorldCopiedMarker(
+              stay.coordinates[0],
+              stay.coordinates[1],
+              createAccommodationIcon(),
+              `
+                <b>${stay.location}</b><br>
+                ${stay.notes}<br>
+                ${stay.dateStart} to ${stay.dateEnd}
+              `,
+              layerGroups.current.stays
+            );
           });
         }
       } else if (viewMode === "local" && activeSegment) {
         // Local view implementation
         debugLog("MAP_UPDATE", "Setting local view for active segment");
-
-        // This is a much better approach using fitBounds with padding to ensure consistent display
 
         // Find center point between origin and destination
         const originLat = activeSegment.origin.coordinates[0];
@@ -547,131 +713,118 @@ const JapanTravelMap = () => {
         const destLat = activeSegment.destination.coordinates[0];
         const destLng = activeSegment.destination.coordinates[1];
 
-        // Calculate distance for logging
+        // Calculate center point
+        const centerLat = (originLat + destLat) / 2;
+        const centerLng = (originLng + destLng) / 2;
+
+        // Calculate distance to determine appropriate zoom level
         const distance = Math.sqrt(
           Math.pow(originLat - destLat, 2) + Math.pow(originLng - destLng, 2)
         );
 
-        debugLog(
-          "MAP_UPDATE",
-          `Showing segment with distance ${distance.toFixed(4)}`
-        );
+        // Better zoom calculation based on distance and transport type
+        let zoom;
 
-        // Special case for international flights
-        if (
-          activeSegment.type === "flight" &&
-          ((activeSegment.origin.code === "ORD" &&
-            activeSegment.destination.code === "NRT") ||
+        if (activeSegment.type === "flight") {
+          if (
+            (activeSegment.origin.code === "ORD" &&
+              activeSegment.destination.code === "NRT") ||
             (activeSegment.origin.code === "HND" &&
-              activeSegment.destination.code === "ORD"))
-        ) {
-          // Use a fixed zoom level for international flights
-          mapInstance.setView([30, 0], 3);
-        } else {
-          // Create a bounds object containing both points
-          const bounds = L.latLngBounds(
-            [originLat, originLng],
-            [destLat, destLng]
-          );
-
-          // Add a tiny bit of padding for extremely short segments to prevent maxZoom issues
-          if (distance < 0.001) {
-            // Add a very small amount to the bounds in all directions
-            bounds.extend([originLat + 0.005, originLng + 0.005]);
-            bounds.extend([originLat - 0.005, originLng - 0.005]);
-            bounds.extend([destLat + 0.005, destLng + 0.005]);
-            bounds.extend([destLat - 0.005, destLng - 0.005]);
-          }
-
-          // Calculate optimal padding based on transport type
-          let paddingPercentage;
-
-          if (activeSegment.type === "flight") {
-            paddingPercentage = 0.15; // 15% padding for flights
-          } else if (activeSegment.type === "train") {
-            paddingPercentage = 0.2; // 20% padding for trains
-          } else if (
-            activeSegment.type === "shuttle" ||
-            activeSegment.type === "walk"
+              activeSegment.destination.code === "ORD")
           ) {
-            paddingPercentage = 0.3; // 30% padding for local transport
+            // International flights
+            zoom = 3; // Fixed zoom for international flights
           } else {
-            paddingPercentage = 0.25; // 25% padding for other types
+            // Domestic flights
+            zoom = 7; // Fixed zoom for domestic flights
           }
-
-          // Calculate pixel padding values based on the container size
-          const mapWidth = mapContainerRef.current.clientWidth;
-          const mapHeight = mapContainerRef.current.clientHeight;
-          const paddingX = Math.round(mapWidth * paddingPercentage);
-          const paddingY = Math.round(mapHeight * paddingPercentage);
-
-          // Use fitBounds to automatically determine the optimal zoom level with padding
-          mapInstance.fitBounds(bounds, {
-            padding: [paddingX, paddingY], // Padding in pixels
-            maxZoom: activeSegment.type === "walk" ? 16 : 14, // Prevent excessive zoom
-            animate: true,
-          });
-
-          debugLog(
-            "MAP_UPDATE",
-            `Using fitBounds with padding: ${paddingX}x${paddingY} pixels`
-          );
+        } else if (activeSegment.type === "train" && distance > 0.5) {
+          // Long train rides
+          zoom = 8;
+        } else if (
+          activeSegment.type === "shuttle" ||
+          activeSegment.type === "walk"
+        ) {
+          // Local transportation
+          zoom = 12; // Very zoomed in for short distances
+        } else {
+          // Default for other transport types or edge cases
+          zoom = 9;
         }
 
-        // Draw active segment
+        debugLog(
+          "MAP_UPDATE",
+          `Setting zoom level ${zoom} for ${
+            activeSegment.type
+          } segment with distance ${distance.toFixed(4)}`
+        );
+
+        mapInstance.setView([centerLat, centerLng], zoom);
+
+        // Draw active segment based on transportation type
         const type = activeSegment.type;
 
-        if (layerGroups.current.active) {
-          // Line connecting origin and destination
-          L.polyline(
-            [
-              [originLat, originLng],
-              [destLat, destLng],
-            ],
-            {
-              color: getRouteColor(type),
-              weight: 4,
-              opacity: 0.8,
-              dashArray: type === "flight" ? "10, 10" : null,
-            }
-          )
-            .bindPopup(
+        if (type === "flight") {
+          // For flights, use great circle paths
+          drawFlightPathWithGreatCircle(
+            activeSegment,
+            true,
+            layerGroups.current.active
+          );
+        } else if (layerGroups.current.active) {
+          // For non-flight segments, use straight lines across all world copies
+          for (let worldCopy = -1; worldCopy <= 1; worldCopy++) {
+            const lngOffset = worldCopy * 360;
+            
+            // Line connecting origin and destination
+            L.polyline(
+              [
+                [originLat, originLng + lngOffset],
+                [destLat, destLng + lngOffset],
+              ],
+              {
+                color: getRouteColor(type),
+                weight: 4,
+                opacity: 0.8,
+                noWrap: true,
+              }
+            )
+              .bindPopup(
+                `
+                <b>${activeSegment.transport}</b><br>
+                From: ${activeSegment.origin.name}<br>
+                To: ${activeSegment.destination.name}
               `
-            <b>${activeSegment.transport}</b><br>
-            From: ${activeSegment.origin.name}<br>
-            To: ${activeSegment.destination.name}
-          `
-            )
-            .addTo(layerGroups.current.active);
+              )
+              .addTo(layerGroups.current.active);
+          }
 
-          // Add markers
+          // Add markers with world copies
           // Origin marker
-          L.marker([originLat, originLng], {
-            icon: createCustomIcon(type, true),
-            title: activeSegment.origin.name,
-          })
-            .bindPopup(
-              `<b>${activeSegment.origin.name}</b>${
-                activeSegment.origin.code
-                  ? ` (${activeSegment.origin.code})`
-                  : ""
-              }`
-            )
-            .addTo(layerGroups.current.active);
+          createWorldCopiedMarker(
+            originLat,
+            originLng,
+            createCustomIcon(type, true),
+            `<b>${activeSegment.origin.name}</b>${
+              activeSegment.origin.code
+                ? ` (${activeSegment.origin.code})`
+                : ""
+            }`,
+            layerGroups.current.active
+          );
 
           // Destination marker
-          L.marker([destLat, destLng], {
-            icon: createCustomIcon(type, true),
-            title: activeSegment.destination.name,
-          })
-            .bindPopup(
-              `<b>${activeSegment.destination.name}</b>${
-                activeSegment.destination.code
-                  ? ` (${activeSegment.destination.code})`
-                  : ""
-              }`
-            )
-            .addTo(layerGroups.current.active);
+          createWorldCopiedMarker(
+            destLat,
+            destLng,
+            createCustomIcon(type, true),
+            `<b>${activeSegment.destination.name}</b>${
+              activeSegment.destination.code
+                ? ` (${activeSegment.destination.code})`
+                : ""
+            }`,
+            layerGroups.current.active
+          );
         }
       }
 
@@ -684,7 +837,7 @@ const JapanTravelMap = () => {
     }
   }, [travelData, viewMode, activeSegment, mapInstance]);
 
-  // Handler for timeline item click - UPDATED to always use local view
+  // Handler for timeline item click
   const handleTimelineItemClick = (segment) => {
     debugLog(
       "INTERACTION",
@@ -722,18 +875,6 @@ const JapanTravelMap = () => {
         };
       })
       .sort((a, b) => new Date(a.date) - new Date(b.date));
-  };
-
-  // Get route color for UI elements
-  const getRouteColor = (type) => {
-    const colorMap = {
-      flight: "#3388ff",
-      train: "#ff3333",
-      shuttle: "#33cc33",
-      walk: "#ff9900",
-      bus: "#9933cc",
-    };
-    return colorMap[type] || "#999999";
   };
 
   // Loading state handling
@@ -809,8 +950,7 @@ const JapanTravelMap = () => {
                     }}
                   >
                     <div style={{ fontSize: "0.875rem", color: "#4b5563" }}>
-                      {dayGroup.dayOfWeek}, {dayGroup.month}{" "}
-                      {dayGroup.dayOfMonth}
+                      {dayGroup.dayOfWeek}, {dayGroup.month} {dayGroup.dayOfMonth}
                     </div>
                   </div>
                   <div style={{ borderTop: "1px solid #f3f4f6" }}>
@@ -862,7 +1002,7 @@ const JapanTravelMap = () => {
                           {segment.origin.name.length > 15
                             ? segment.origin.name.substring(0, 15) + "..."
                             : segment.origin.name}{" "}
-                          →
+                          →{" "}
                           {segment.destination.name.length > 15
                             ? segment.destination.name.substring(0, 15) + "..."
                             : segment.destination.name}
@@ -887,10 +1027,7 @@ const JapanTravelMap = () => {
               {travelData.stays.map((stay, index) => (
                 <div
                   key={index}
-                  style={{
-                    padding: "0.75rem",
-                    borderBottom: "1px solid #f3f4eb",
-                  }}
+                  style={{ padding: "0.75rem", borderBottom: "1px solid #f3f4eb" }}
                 >
                   <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
                     {formatDate(stay.dateStart)} - {formatDate(stay.dateEnd)}
@@ -912,7 +1049,6 @@ const JapanTravelMap = () => {
             </div>
           </div>
         ) : (
-          // Placeholder sidebar when travelData is not yet loaded
           <div
             style={{
               width: "16rem",
@@ -928,12 +1064,12 @@ const JapanTravelMap = () => {
 
         {/* Map Area */}
         <div style={{ flex: "1", position: "relative" }}>
-          {/* View controls - MOVED DOWN to not overlap zoom controls */}
+          {/* View controls - positioned higher up to avoid overlap with zoom controls */}
           <div
             style={{
               position: "absolute",
-              top: "5rem", // Moved down to leave space for zoom controls
-              left: "1rem",
+              top: "1rem", 
+              left: "5rem", 
               zIndex: "10",
               display: "flex",
               gap: "0.5rem",
@@ -979,7 +1115,7 @@ const JapanTravelMap = () => {
             )}
           </div>
 
-          {/* Legend */}
+          {/* Legend - positioned at the top right */}
           <div
             style={{
               position: "absolute",
@@ -1110,7 +1246,7 @@ const JapanTravelMap = () => {
               right: 0,
               bottom: 0,
               backgroundColor: "#e5e7eb",
-              zIndex: "5",
+              zIndex: "1", // Lower z-index so controls appear above
             }}
           >
             {!isContainerReady && (
@@ -1127,20 +1263,6 @@ const JapanTravelMap = () => {
                 Preparing map...
               </div>
             )}
-            <noscript>
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  textAlign: "center",
-                  color: "#4b5563",
-                }}
-              >
-                Map requires JavaScript to be enabled
-              </div>
-            </noscript>
           </div>
 
           {/* Selected Segment Detail Panel */}
@@ -1148,7 +1270,7 @@ const JapanTravelMap = () => {
             <div
               style={{
                 position: "absolute",
-                bottom: "1rem",
+                bottom: "5rem", // Positioned higher up to avoid overlap
                 right: "1rem",
                 backgroundColor: "white",
                 padding: "1rem",
