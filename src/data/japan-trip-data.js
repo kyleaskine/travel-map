@@ -88,7 +88,7 @@ export const japanTripData = {
       },
       "destination": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       }
     },
     {
@@ -98,11 +98,11 @@ export const japanTripData = {
       "transport": "Hotel Shuttle",
       "origin": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       },
       "destination": {
         "name": "Satoyama Jujo",
-        "coordinates": [36.9467, 138.8229]
+        "coordinates": [37.020567, 138.801704]
       }
     },
     {
@@ -112,11 +112,11 @@ export const japanTripData = {
       "transport": "Hotel Shuttle",
       "origin": {
         "name": "Satoyama Jujo",
-        "coordinates": [36.9467, 138.8229]
+        "coordinates": [37.020567, 138.801704]
       },
       "destination": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       }
     },
     {
@@ -126,11 +126,11 @@ export const japanTripData = {
       "transport": "Hotel Shuttle",
       "origin": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       },
       "destination": {
         "name": "Ryugon",
-        "coordinates": [36.9403, 138.8054]
+        "coordinates": [37.058056, 138.883397]
       }
     },
     {
@@ -140,11 +140,11 @@ export const japanTripData = {
       "transport": "Hotel Shuttle",
       "origin": {
         "name": "Ryugon",
-        "coordinates": [36.9403, 138.8054]
+        "coordinates": [37.058056, 138.883397]
       },
       "destination": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       }
     },
     {
@@ -154,7 +154,7 @@ export const japanTripData = {
       "transport": "Joetsu Shinkansen",
       "origin": {
         "name": "Echigo-Yuzawa Station",
-        "coordinates": [36.9310, 138.8084]
+        "coordinates": [36.935862, 138.809237]
       },
       "destination": {
         "name": "Omiya Station",
@@ -186,7 +186,7 @@ export const japanTripData = {
       },
       "destination": {
         "name": "Hyatt Regency Yokohama",
-        "coordinates": [35.4540, 139.6380]
+        "coordinates": [35.445859, 139.645263]
       }
     },
     {
@@ -196,12 +196,12 @@ export const japanTripData = {
       "transport": "Limousine Bus",
       "origin": {
         "name": "Yokohama Chinatown (Chukagai)",
-        "coordinates": [35.4431, 139.6462]
+        "coordinates": [35.443927, 139.646748]
       },
       "destination": {
         "name": "Haneda Airport Terminal 3",
         "code": "HND T3",
-        "coordinates": [35.5494, 139.7798]
+        "coordinates": [35.544512, 139.767891]
       }
     },
     {
@@ -212,7 +212,7 @@ export const japanTripData = {
       "origin": {
         "name": "Haneda Airport (HND)",
         "code": "HND",
-        "coordinates": [35.5494, 139.7798]
+        "coordinates": [35.544512, 139.767891]
       },
       "destination": {
         "name": "O'Hare International Airport (ORD)",
@@ -240,35 +240,35 @@ export const japanTripData = {
   "stays": [
     {
       "location": "Hilton Garden Inn O'Hare",
-      "coordinates": [41.9742, -87.9073],
+      "coordinates": [42.000855, -87.864553],
       "dateStart": "2025-02-16",
       "dateEnd": "2025-02-17",
       "notes": "Airport hotel before Japan flight"
     },
     {
       "location": "Hyatt Regency Tokyo",
-      "coordinates": [35.6896, 139.7006],
+      "coordinates": [35.691091, 139.691477],
       "dateStart": "2025-02-18",
       "dateEnd": "2025-02-19",
       "notes": "First night in Japan"
     },
     {
       "location": "Satoyama Jujo",
-      "coordinates": [36.9467, 138.8229],
+      "coordinates": [37.020567, 138.801704],
       "dateStart": "2025-02-19",
       "dateEnd": "2025-02-20",
       "notes": "Luxury ryokan experience"
     },
     {
       "location": "Ryugon",
-      "coordinates": [36.9403, 138.8054],
+      "coordinates": [37.058056, 138.883397],
       "dateStart": "2025-02-20",
       "dateEnd": "2025-02-21",
       "notes": "Traditional ryokan"
     },
     {
       "location": "Hyatt Regency Yokohama",
-      "coordinates": [35.4540, 139.6380],
+      "coordinates": [35.445859, 139.645263],
       "dateStart": "2025-02-21",
       "dateEnd": "2025-02-22",
       "notes": "Last night in Japan"

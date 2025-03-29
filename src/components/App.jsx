@@ -1,6 +1,6 @@
 import React from 'react';
-import JapanTravelMap from './JapanTravelMap';
-import './index.css';
+import JapanTravelMap from './TravelMap';
+import '../index.css';
 
 function App() {
   return (
