@@ -19,25 +19,28 @@ const useMapInstance = (containerRef, isContainerReady) => {
 
   // Initialize map once container is confirmed ready
   useEffect(() => {
+    // Guard clauses with early returns
     if (!isContainerReady) {
       debugLog("MAP_INIT", "Waiting for container to be ready");
       return;
     }
-
+  
+    // Critical: First check if we already have a map instance
     if (mapInstance) {
-      debugLog("MAP_INIT", "Map already initialized");
-      return;
+      debugLog("MAP_INIT", "Map already initialized, reusing existing instance");
+      return; // Exit early - don't reinitialize
     }
     
-    // Prevent multiple initialization attempts
+    // The check against initializationAttempted.current is still good, keep it
     if (initializationAttempted.current) {
       debugLog("MAP_INIT", "Map initialization already attempted, skipping");
       return;
     }
     
+    // Set the flag immediately
     initializationAttempted.current = true;
-
-    debugLog("MAP_INIT", "Container is ready, initializing map");
+  
+    debugLog("MAP_INIT", "Container is ready, initializing map for the first time");
     setMapStatus("Creating map...");
 
     try {

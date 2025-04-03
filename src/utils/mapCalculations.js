@@ -1,3 +1,5 @@
+import L from "leaflet";
+
 // Convert degrees to radians
 export const toRad = (deg) => (deg * Math.PI) / 180;
 
@@ -126,6 +128,98 @@ export const calculateGreatCirclePolylines = (startLat, startLng, endLat, endLng
   }
   
   return segments;
+};
+
+/**
+ * Creates a bounds object that handles the antimeridian crossing properly
+ * @param {number} lat1 - Origin latitude
+ * @param {number} lng1 - Origin longitude
+ * @param {number} lat2 - Destination latitude
+ * @param {number} lng2 - Destination longitude
+ * @returns {L.LatLngBounds} Properly adjusted bounds
+ */
+export const createCrossingAwareBounds = (lat1, lng1, lat2, lng2) => {
+  // Check if this might be crossing the antimeridian
+  const isLikelyCrossing = Math.abs(lng1 - lng2) > 180;
+  
+  if (isLikelyCrossing) {
+    debugLog("BOUNDS", "Detected possible antimeridian crossing", { lng1, lng2 });
+    
+    // Adjust one of the longitudes to create proper bounds
+    let adjustedLng1 = lng1;
+    let adjustedLng2 = lng2;
+    
+    if (lng1 < 0 && lng2 > 0) {
+      // If crossing from west to east, add 360 to the western longitude
+      adjustedLng1 = lng1 + 360;
+      debugLog("BOUNDS", "Adjusted western longitude", { original: lng1, adjusted: adjustedLng1 });
+    } else if (lng1 > 0 && lng2 < 0) {
+      // If crossing from east to west, add 360 to the eastern longitude
+      adjustedLng2 = lng2 + 360;
+      debugLog("BOUNDS", "Adjusted eastern longitude", { original: lng2, adjusted: adjustedLng2 });
+    }
+    
+    // Create bounds with the adjusted coordinates
+    return L.latLngBounds(
+      L.latLng(lat1, adjustedLng1),
+      L.latLng(lat2, adjustedLng2)
+    );
+  }
+  
+  // Regular bounds if not crossing antimeridian
+  return L.latLngBounds(
+    L.latLng(lat1, lng1),
+    L.latLng(lat2, lng2)
+  );
+};
+
+/**
+ * Log the current map state including zoom level and bounds
+ * @param {Object} mapInstance - Leaflet map instance
+ * @param {string} context - Description of where this is being called from
+ */
+export const logMapState = (mapInstance, context = 'unknown') => {
+  if (!mapInstance) {
+    debugLog("MAP_DEBUG", `No map instance available (${context})`);
+    return;
+  }
+  
+  const zoom = mapInstance.getZoom();
+  const center = mapInstance.getCenter();
+  const bounds = mapInstance.getBounds();
+  
+  debugLog("MAP_DEBUG", `Map state (${context}):`, {
+    zoom,
+    center: [center.lat, center.lng],
+    bounds: {
+      northEast: [bounds.getNorthEast().lat, bounds.getNorthEast().lng],
+      southWest: [bounds.getSouthWest().lat, bounds.getSouthWest().lng]
+    }
+  });
+};
+
+/**
+ * Calculate the great circle distance between two points in kilometers
+ * @param {number} lat1 - Latitude of first point in degrees
+ * @param {number} lon1 - Longitude of first point in degrees
+ * @param {number} lat2 - Latitude of second point in degrees
+ * @param {number} lon2 - Longitude of second point in degrees
+ * @returns {number} Distance in kilometers
+ */
+export const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
+  
+  return distance;
 };
 
 /**
