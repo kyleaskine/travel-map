@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { timelineStyles } from "../../utils/styleUtils";
 import { groupSegmentsByDate } from "../../utils/dateUtils";
-import TimelineSegment from "./TimelineSegment";
-import TimelineAccommodation from "./TimelineAccommodation";
 import { debugLog } from "../../utils/mapCalculations";
+import ExpandableTimelineSegment from "./ExpandableTimelineSegment";
+import ExpandableTimelineStay from "./ExpandableTimelineStay";
+import MediaViewer from "./MediaViewer";
 
 /**
- * TimelinePanel component displays the trip timeline with keyboard navigation
+ * Enhanced TimelinePanel component with expandable entries and media viewer
  */
 const TimelinePanel = ({ 
   travelData, 
@@ -20,6 +21,9 @@ const TimelinePanel = ({
   const [allTimelineItems, setAllTimelineItems] = useState([]);
   // Current focused index for keyboard navigation
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  // Media viewer state
+  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
+  const [mediaViewerItem, setMediaViewerItem] = useState(null);
   
   // Process and combine segments and stays into a chronological timeline
   useEffect(() => {
@@ -69,6 +73,9 @@ const TimelinePanel = ({
     if (!allTimelineItems.length) return;
     
     const handleKeyDown = (e) => {
+      // Only process if not in media viewer mode
+      if (mediaViewerOpen) return;
+      
       // Only process if the timeline panel is focused or contains the active element
       const timelineElement = timelinePanelRef.current;
       const activeElement = document.activeElement;
@@ -140,6 +147,16 @@ const TimelinePanel = ({
         if (selectedItem) {
           onItemSelect(selectedItem);
         }
+      } else if (e.key === 'ArrowRight' && focusedIndex >= 0) {
+        e.preventDefault();
+        // Get the current item
+        const item = allTimelineItems[focusedIndex];
+        
+        // Check if item has media
+        if (item && item.media && item.media.length > 0) {
+          // Open media viewer with this item
+          handleViewMedia(item);
+        }
       }
     };
     
@@ -149,7 +166,7 @@ const TimelinePanel = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [allTimelineItems, focusedIndex, onItemSelect, onItemFocus]);
+  }, [allTimelineItems, focusedIndex, onItemSelect, onItemFocus, mediaViewerOpen]);
   
   // Effect to make the timeline focusable
   useEffect(() => {
@@ -161,6 +178,12 @@ const TimelinePanel = ({
       panelElement.focus();
     }
   }, []);
+  
+  // Handle viewing media for an item
+  const handleViewMedia = (item) => {
+    setMediaViewerItem(item);
+    setMediaViewerOpen(true);
+  };
 
   if (!travelData) return (
     <div style={{
@@ -178,75 +201,87 @@ const TimelinePanel = ({
   const segmentsByDate = groupSegmentsByDate(allTimelineItems);
 
   return (
-    <div 
-      ref={timelinePanelRef} 
-      style={{
-        ...timelineStyles.container,
-        zIndex: 10, // Ensure this is above the map
-      }}
-      className="timeline-panel"
-      tabIndex="0" // Make the container focusable
-    >
-      {/* Timeline Header */}
-      <div style={timelineStyles.header}>
-        <h2 style={{ fontWeight: "bold" }}>Travel Timeline</h2>
-        <div style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.25rem" }}>
-          Use ↑/↓ arrow keys to navigate
+    <>
+      <div 
+        ref={timelinePanelRef} 
+        style={{
+          ...timelineStyles.container,
+          zIndex: mediaViewerOpen ? 1 : 10, // Lower z-index when media viewer is open
+        }}
+        className="timeline-panel"
+        tabIndex="0" // Make the container focusable
+      >
+        {/* Timeline Header */}
+        <div style={timelineStyles.header}>
+          <h2 style={{ fontWeight: "bold" }}>Travel Timeline</h2>
+          <div style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.25rem" }}>
+            Use ↑/↓ to navigate, → to view media
+          </div>
+        </div>
+        
+        {/* Timeline Days and Items */}
+        <div>
+          {segmentsByDate.map((dayGroup) => (
+            <div key={dayGroup.date} style={{ marginBottom: "0.5rem" }}>
+              {/* Day Header */}
+              <div style={timelineStyles.dayHeader}>
+                <div style={timelineStyles.dayText}>
+                  {dayGroup.dayOfWeek}, {dayGroup.month} {dayGroup.dayOfMonth}
+                </div>
+              </div>
+              
+              {/* Items for this day */}
+              <div>
+                {dayGroup.segments.map((item) => {
+                  // Calculate the global index for this item in the allTimelineItems array
+                  const globalIdx = allTimelineItems.findIndex(ti => 
+                    (item.itemType === 'segment' && ti.id === item.id) || 
+                    (item.itemType === 'stay' && ti.id === item.id)
+                  );
+                  
+                  const isActive = activeItem && activeItem.id === item.id;
+                  const isFocused = focusedIndex === globalIdx;
+                  
+                  if (item.itemType === 'stay') {
+                    return (
+                      <ExpandableTimelineStay
+                        key={item.id}
+                        stay={item}
+                        isActive={isActive}
+                        isFocused={isFocused}
+                        onClick={() => onItemSelect(item)} // Pass the full item object
+                        onViewMedia={() => handleViewMedia(item)} // Handle viewing media
+                        id={`timeline-item-${globalIdx}`}
+                      />
+                    );
+                  } else {
+                    return (
+                      <ExpandableTimelineSegment
+                        key={item.id}
+                        segment={item}
+                        isActive={isActive}
+                        isFocused={isFocused}
+                        onClick={() => onItemSelect(item)} // Pass the full item object
+                        onViewMedia={() => handleViewMedia(item)} // Handle viewing media
+                        id={`timeline-item-${globalIdx}`}
+                      />
+                    );
+                  }
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
       
-      {/* Timeline Days and Items */}
-      <div>
-        {segmentsByDate.map((dayGroup) => (
-          <div key={dayGroup.date} style={{ marginBottom: "0.5rem" }}>
-            {/* Day Header */}
-            <div style={timelineStyles.dayHeader}>
-              <div style={timelineStyles.dayText}>
-                {dayGroup.dayOfWeek}, {dayGroup.month} {dayGroup.dayOfMonth}
-              </div>
-            </div>
-            
-            {/* Items for this day */}
-            <div style={{ borderTop: "1px solid #f3f4f6" }}>
-              {dayGroup.segments.map((item) => {
-                // Calculate the global index for this item in the allTimelineItems array
-                const globalIdx = allTimelineItems.findIndex(ti => 
-                  (item.itemType === 'segment' && ti.id === item.id) || 
-                  (item.itemType === 'stay' && ti.id === item.id)
-                );
-                
-                const isActive = activeItem && activeItem.id === item.id;
-                const isFocused = focusedIndex === globalIdx;
-                
-                if (item.itemType === 'stay') {
-                  return (
-                    <TimelineAccommodation
-                      key={item.id}
-                      stay={item}
-                      isActive={isActive}
-                      isFocused={isFocused}
-                      onClick={() => onItemSelect(item)} // Pass the full item object
-                      id={`timeline-item-${globalIdx}`}
-                    />
-                  );
-                } else {
-                  return (
-                    <TimelineSegment
-                      key={item.id}
-                      segment={item}
-                      isActive={isActive}
-                      isFocused={isFocused}
-                      onClick={() => onItemSelect(item)} // Pass the full item object
-                      id={`timeline-item-${globalIdx}`}
-                    />
-                  );
-                }
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      {/* Media Viewer (higher z-index, overlay everything) */}
+      {mediaViewerOpen && mediaViewerItem && (
+        <MediaViewer
+          item={mediaViewerItem}
+          onClose={() => setMediaViewerOpen(false)}
+        />
+      )}
+    </>
   );
 };
 

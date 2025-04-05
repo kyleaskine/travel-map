@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import _ from "lodash";
-import { japanTripData } from "../../data/japan-trip-data";
+// Replace static import with API service
+// import { japanTripData } from "../../data/japan-trip-data";
+import TripAPI from "../../services/tripApi";
 import { headerStyles, loadingStyles } from "../../utils/styleUtils";
 import {
   debugLog,
@@ -37,6 +39,7 @@ import useMapLayers from "../../hooks/useMapLayers";
 const TravelMap = () => {
   // Application state
   const [travelData, setTravelData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [mapInstance, setMapInstance] = useState(null);
   const [activeItem, setActiveItem] = useState(null);
   const [focusedItem, setFocusedItem] = useState(null);
@@ -44,6 +47,8 @@ const TravelMap = () => {
   const [mapError, setMapError] = useState(null);
   const [lastFitBoundsTime, setLastFitBoundsTime] = useState(0);
   const [lastFitBoundsSegmentId, setLastFitBoundsSegmentId] = useState(null);
+  const [selectedTripId, setSelectedTripId] = useState(null);
+  const [availableTrips, setAvailableTrips] = useState([]);
 
   // Add a rendering lock to prevent duplicate updates
   const isRenderingRef = useRef(false);
@@ -51,16 +56,81 @@ const TravelMap = () => {
   // Initialize map layers when map is ready
   const { layerGroups, clearAllLayers } = useMapLayers(mapInstance);
 
-  // Initialize trip data
-  useEffect(() => {
-    try {
-      debugLog("DATA", "Loading travel data");
-      setTravelData(japanTripData);
-    } catch (error) {
-      debugLog("ERROR", "Failed to load travel data", error);
-      setMapError("Failed to load travel data");
+  const handleItemUpdate = (updatedItem) => {
+    // Make a copy of the travel data
+    const updatedTravelData = {...travelData};
+    
+    // Check if it's a segment or stay
+    if (updatedItem.itemType === 'segment' || updatedItem.type) {
+      // It's a segment
+      const segmentIndex = updatedTravelData.segments.findIndex(
+        s => s.id === updatedItem.id
+      );
+      
+      if (segmentIndex !== -1) {
+        // Update the segment
+        updatedTravelData.segments[segmentIndex] = {
+          ...updatedTravelData.segments[segmentIndex],
+          ...updatedItem
+        };
+        console.log(`Updated segment: ${updatedItem.transport || updatedItem.id}`);
+      }
+    } else {
+      // It's a stay
+      const stayId = updatedItem.id || `stay-${updatedItem.location.replace(/\s+/g, '-').toLowerCase()}`;
+      const stayName = stayId.replace('stay-', '').replace(/-/g, ' ');
+      
+      const stayIndex = updatedTravelData.stays.findIndex(
+        s => s.location.toLowerCase() === stayName.toLowerCase()
+      );
+      
+      if (stayIndex !== -1) {
+        // Update the stay
+        updatedTravelData.stays[stayIndex] = {
+          ...updatedTravelData.stays[stayIndex],
+          ...updatedItem
+        };
+        console.log(`Updated stay: ${updatedItem.location}`);
+      }
     }
-  }, []);
+    
+    // Update the state
+    setTravelData(updatedTravelData);
+  };
+
+  // Fetch trips from API
+  useEffect(() => {
+    const fetchTrips = async () => {
+      try {
+        setIsLoading(true);
+        debugLog("DATA", "Fetching trips from API");
+        
+        // Fetch all available trips
+        const trips = await TripAPI.getAllTrips();
+        setAvailableTrips(trips);
+        
+        // If we have trips, select the first one or use the selectedTripId if available
+        if (trips.length > 0) {
+          const tripId = selectedTripId || trips[0]._id;
+          setSelectedTripId(tripId);
+          
+          // Fetch the selected trip data
+          const selectedTrip = await TripAPI.getTripById(tripId);
+          setTravelData(selectedTrip);
+          debugLog("DATA", "Trip data loaded successfully");
+        } else {
+          setMapError("No trips available. Please create a trip first.");
+        }
+      } catch (error) {
+        debugLog("ERROR", "Failed to load travel data", error);
+        setMapError(`Failed to load travel data: ${error.message}`);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTrips();
+  }, [selectedTripId]);
 
   // Handle map being ready - initial setup
   const handleMapReady = useCallback(
@@ -680,7 +750,7 @@ const TravelMap = () => {
       renderMapData();
     }
   }, [mapInstance, travelData, layerGroups, renderMapData]);
-
+  
   // Update map when view mode changes or active/focused item changes
   useEffect(() => {
     if (mapInstance && travelData && layerGroups) {
@@ -1062,9 +1132,14 @@ const TravelMap = () => {
   const handleMapError = (error) => {
     setMapError(error);
   };
+  
+  // Trip selector change handler
+  const handleTripChange = (e) => {
+    setSelectedTripId(e.target.value);
+  };
 
   // Loading state handling
-  if (!travelData) {
+  if (isLoading) {
     return <div style={loadingStyles.container}>Loading travel data...</div>;
   }
 
@@ -1077,12 +1152,35 @@ const TravelMap = () => {
         backgroundColor: "#f3f4f6",
       }}
     >
-      {/* Header */}
+      {/* Header with Trip Selector */}
       <header style={headerStyles.header}>
-        <h1 style={headerStyles.title}>
-          {travelData ? travelData.tripName : "Travel Map"}
-        </h1>
-        <p style={headerStyles.subtitle}>{travelData.dateRange}</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <h1 style={headerStyles.title}>
+            {travelData ? travelData.tripName : "Travel Map"}
+          </h1>
+          
+          {availableTrips.length > 1 && (
+            <select 
+              value={selectedTripId} 
+              onChange={handleTripChange}
+              style={{
+                padding: "0.5rem",
+                borderRadius: "0.375rem",
+                border: "1px solid white",
+                backgroundColor: "rgba(255, 255, 255, 0.2)",
+                color: "white",
+                fontWeight: "500"
+              }}
+            >
+              {availableTrips.map(trip => (
+                <option key={trip._id} value={trip._id}>
+                  {trip.tripName}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <p style={headerStyles.subtitle}>{travelData?.dateRange}</p>
       </header>
 
       <div style={{ display: "flex", flex: "1", overflow: "hidden" }}>
@@ -1096,9 +1194,9 @@ const TravelMap = () => {
 
         {/* Map Area */}
         <div style={{ flex: "1", position: "relative" }}>
-          {/* MapContainer - ADD A STABLE KEY */}
+          {/* MapContainer - with stable key to prevent remounting issues */}
           <MapContainer
-            key="japan-travel-map" // Add this stable key
+            key="japan-travel-map" 
             onMapReady={handleMapReady}
             onMapError={handleMapError}
           >
@@ -1127,6 +1225,7 @@ const TravelMap = () => {
                         if (activeItem) setActiveItem(null);
                         else setFocusedItem(null);
                       }}
+                      onUpdate={handleItemUpdate}
                     />
                   );
                 } else if (displayItem.itemType === "stay") {
@@ -1137,6 +1236,7 @@ const TravelMap = () => {
                         if (activeItem) setActiveItem(null);
                         else setFocusedItem(null);
                       }}
+                      onUpdate={handleItemUpdate}
                     />
                   );
                 }

@@ -58,7 +58,7 @@ const MapContainer = ({
   }, [retryCount]);
 
   // Initialize the map
-  const { mapInstance, mapError, mapStatus } = useMapInstance(
+  const { mapInstance, mapError } = useMapInstance(
     mapContainerRef, 
     isContainerReady
   );
