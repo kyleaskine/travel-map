@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import _ from "lodash";
-// Replace static import with API service
-// import { japanTripData } from "../../data/japan-trip-data";
 import TripAPI from "../../services/tripApi";
 import { headerStyles, loadingStyles } from "../../utils/styleUtils";
 import {
@@ -56,6 +54,10 @@ const TravelMap = () => {
   // Initialize map layers when map is ready
   const { layerGroups, clearAllLayers } = useMapLayers(mapInstance);
 
+  /**
+   * Enhanced handleItemUpdate function to ensure media updates are properly propagated
+   * @param {Object} updatedItem - Item with updated properties
+   */
   const handleItemUpdate = (updatedItem) => {
     // Make a copy of the travel data
     const updatedTravelData = {...travelData};
@@ -74,6 +76,22 @@ const TravelMap = () => {
           ...updatedItem
         };
         console.log(`Updated segment: ${updatedItem.transport || updatedItem.id}`);
+        
+        // If we're updating the active item, update that too
+        if (activeItem && activeItem.id === updatedItem.id) {
+          setActiveItem({
+            ...activeItem,
+            ...updatedItem
+          });
+        }
+        
+        // If we're updating the focused item, update that too
+        if (focusedItem && focusedItem.id === updatedItem.id) {
+          setFocusedItem({
+            ...focusedItem,
+            ...updatedItem
+          });
+        }
       }
     } else {
       // It's a stay
@@ -91,11 +109,45 @@ const TravelMap = () => {
           ...updatedItem
         };
         console.log(`Updated stay: ${updatedItem.location}`);
+        
+        // If we're updating the active item, update that too
+        if (activeItem && activeItem.id === stayId) {
+          setActiveItem({
+            ...activeItem,
+            ...updatedItem
+          });
+        }
+        
+        // If we're updating the focused item, update that too
+        if (focusedItem && focusedItem.id === stayId) {
+          setFocusedItem({
+            ...focusedItem,
+            ...updatedItem
+          });
+        }
       }
     }
     
     // Update the state
     setTravelData(updatedTravelData);
+    
+    // Optionally, sync with server
+    // This is commented out pending API implementation
+    /*
+    if (updatedItem.itemType === 'segment') {
+      TripAPI.updateTrip(travelData._id, {
+        segments: updatedTravelData.segments
+      })
+        .then(() => console.log('Trip updated on server'))
+        .catch(err => console.error('Failed to update trip on server:', err));
+    } else {
+      TripAPI.updateTrip(travelData._id, {
+        stays: updatedTravelData.stays
+      })
+        .then(() => console.log('Trip updated on server'))
+        .catch(err => console.error('Failed to update trip on server:', err));
+    }
+    */
   };
 
   // Fetch trips from API

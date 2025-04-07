@@ -3,14 +3,14 @@ import PropTypes from "prop-types";
 import { timelineStyles } from "../../utils/styleUtils";
 import { groupSegmentsByDate } from "../../utils/dateUtils";
 import { debugLog } from "../../utils/mapCalculations";
-import ExpandableTimelineSegment from "./ExpandableTimelineSegment";
-import ExpandableTimelineStay from "./ExpandableTimelineStay";
-import MediaViewer from "./MediaViewer";
+import UpdatedExpandableTimelineSegment from "./ExpandableTimelineSegment";
+import UpdatedExpandableTimelineStay from "./ExpandableTimelineStay"; // Assume you'd create this as well
+import EnhancedMediaViewer from "./MediaViewer";
 
 /**
- * Enhanced TimelinePanel component with expandable entries and media viewer
+ * Updated TimelinePanel with enhanced media viewing capabilities
  */
-const TimelinePanel = ({ 
+const UpdatedTimelinePanel = ({ 
   travelData, 
   activeItem,
   onItemSelect,
@@ -89,10 +89,8 @@ const TimelinePanel = ({
         e.preventDefault();
         setFocusedIndex(prevIndex => {
           const newIndex = prevIndex <= 0 ? allTimelineItems.length - 1 : prevIndex - 1;
-          // Get the full item object
           const fullItem = allTimelineItems[newIndex];
           
-          // Log the full item details before passing it along
           debugLog("KEYBOARD_NAV", "Arrow Up - Focused item:", fullItem);
           
           // Scroll the item into view
@@ -101,10 +99,7 @@ const TimelinePanel = ({
             itemElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
           
-          // Important: Pass the FULL ITEM OBJECT, not just an ID
           if (onItemFocus && fullItem) {
-            // Pass the item to parent for display on the map
-            // This is critical - we need to pass the FULL object
             onItemFocus(fullItem);
           }
           
@@ -114,10 +109,8 @@ const TimelinePanel = ({
         e.preventDefault();
         setFocusedIndex(prevIndex => {
           const newIndex = prevIndex >= allTimelineItems.length - 1 ? 0 : prevIndex + 1;
-          // Get the full item object
           const fullItem = allTimelineItems[newIndex];
           
-          // Log the full item details before passing it along
           debugLog("KEYBOARD_NAV", "Arrow Down - Focused item:", fullItem);
           
           // Scroll the item into view
@@ -126,10 +119,7 @@ const TimelinePanel = ({
             itemElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
           
-          // Important: Pass the FULL ITEM OBJECT, not just an ID
           if (onItemFocus && fullItem) {
-            // Pass the item to parent for display on the map
-            // This is critical - we need to pass the FULL object
             onItemFocus(fullItem);
           }
           
@@ -137,13 +127,10 @@ const TimelinePanel = ({
         });
       } else if (e.key === 'Enter' && focusedIndex >= 0) {
         e.preventDefault();
-        // Get the FULL item object for selection
         const selectedItem = allTimelineItems[focusedIndex];
         
-        // Log the full item details before passing it along
         debugLog("KEYBOARD_NAV", "Enter pressed - Selected item:", selectedItem);
         
-        // Pass the FULL item to parent
         if (selectedItem) {
           onItemSelect(selectedItem);
         }
@@ -244,25 +231,25 @@ const TimelinePanel = ({
                   
                   if (item.itemType === 'stay') {
                     return (
-                      <ExpandableTimelineStay
+                      <UpdatedExpandableTimelineStay
                         key={item.id}
                         stay={item}
                         isActive={isActive}
                         isFocused={isFocused}
-                        onClick={() => onItemSelect(item)} // Pass the full item object
-                        onViewMedia={() => handleViewMedia(item)} // Handle viewing media
+                        onClick={() => onItemSelect(item)}
+                        onViewMedia={() => handleViewMedia(item)}
                         id={`timeline-item-${globalIdx}`}
                       />
                     );
                   } else {
                     return (
-                      <ExpandableTimelineSegment
+                      <UpdatedExpandableTimelineSegment
                         key={item.id}
                         segment={item}
                         isActive={isActive}
                         isFocused={isFocused}
-                        onClick={() => onItemSelect(item)} // Pass the full item object
-                        onViewMedia={() => handleViewMedia(item)} // Handle viewing media
+                        onClick={() => onItemSelect(item)}
+                        onViewMedia={() => handleViewMedia(item)}
                         id={`timeline-item-${globalIdx}`}
                       />
                     );
@@ -274,9 +261,9 @@ const TimelinePanel = ({
         </div>
       </div>
       
-      {/* Media Viewer (higher z-index, overlay everything) */}
+      {/* Enhanced Media Viewer (only when media is being viewed) */}
       {mediaViewerOpen && mediaViewerItem && (
-        <MediaViewer
+        <EnhancedMediaViewer
           item={mediaViewerItem}
           onClose={() => setMediaViewerOpen(false)}
         />
@@ -285,7 +272,7 @@ const TimelinePanel = ({
   );
 };
 
-TimelinePanel.propTypes = {
+UpdatedTimelinePanel.propTypes = {
   travelData: PropTypes.shape({
     tripName: PropTypes.string.isRequired,
     dateRange: PropTypes.string.isRequired,
@@ -297,4 +284,4 @@ TimelinePanel.propTypes = {
   onItemFocus: PropTypes.func
 };
 
-export default TimelinePanel;
+export default UpdatedTimelinePanel;
