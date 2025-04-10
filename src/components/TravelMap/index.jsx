@@ -3,7 +3,6 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import _ from "lodash";
 import TripAPI from "../../services/tripApi";
-import MediaAPI from "../../services/mediaApi";
 import { headerStyles, loadingStyles } from "../../utils/styleUtils";
 import {
   debugLog,
@@ -19,6 +18,7 @@ import {
   drawFlightPathWithGreatCircle,
 } from "../../utils/markerUtils";
 import { getRouteColor } from "../../utils/styleUtils";
+import { formatDate } from "../../utils/dateUtils";
 
 // Components
 import MapContainer from "./MapContainer";
@@ -29,6 +29,7 @@ import SegmentDetail from "./SegmentDetail";
 import AccommodationDetail from "./AccommodationDetail";
 import ErrorMessage from "../common/ErrorMessage";
 import TripSelector from "./TripSelector";
+import AlbumOverlay from "./AlbumOverlay"; // Import the new AlbumOverlay component
 
 // Custom hooks
 import useMapLayers from "../../hooks/useMapLayers";
@@ -49,7 +50,11 @@ const TravelMap = () => {
   const [lastFitBoundsSegmentId, setLastFitBoundsSegmentId] = useState(null);
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [availableTrips, setAvailableTrips] = useState([]);
-  const [isRefreshing, setIsRefreshing] = useState(false); // Add this state for refresh indicator
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Album overlay state
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumItem, setAlbumItem] = useState(null);
 
   // Add a rendering lock to prevent duplicate updates
   const isRenderingRef = useRef(false);
@@ -1247,6 +1252,14 @@ const TravelMap = () => {
     }
   };
 
+  // Function to handle opening the album overlay
+  const handleOpenAlbum = (item) => {
+    // Set the item for the album content
+    setAlbumItem(item);
+    // Open the album
+    setAlbumOpen(true);
+  };
+
   // Manual refresh handler
   const handleManualRefresh = () => {
     refreshTripData();
@@ -1363,28 +1376,31 @@ const TravelMap = () => {
 
               // If we have a valid display item, render the appropriate detail panel
               if (displayItem) {
+                // Explicitly check item type to determine which component to render
                 if (displayItem.itemType === "segment") {
                   return (
                     <SegmentDetail
-                      segment={displayItem}
+                      segment={displayItem}  // Make sure we're passing the correct prop name
                       onClose={() => {
                         if (activeItem) setActiveItem(null);
                         else setFocusedItem(null);
                       }}
                       onUpdate={handleItemUpdate}
                       tripId={travelData?._id}
+                      openAlbum={() => handleOpenAlbum(displayItem)}  // Pass the openAlbum function
                     />
                   );
                 } else if (displayItem.itemType === "stay") {
                   return (
                     <AccommodationDetail
-                      accommodation={displayItem}
+                      accommodation={displayItem}  // Make sure we're passing the correct prop name
                       onClose={() => {
                         if (activeItem) setActiveItem(null);
                         else setFocusedItem(null);
                       }}
                       onUpdate={handleItemUpdate}
                       tripId={travelData?._id}
+                      openAlbum={() => handleOpenAlbum(displayItem)}  // Pass the openAlbum function
                     />
                   );
                 }
@@ -1402,6 +1418,23 @@ const TravelMap = () => {
           )}
         </div>
       </div>
+      
+      {/* Album Overlay */}
+      <AlbumOverlay
+        isOpen={albumOpen}
+        onClose={() => setAlbumOpen(false)}
+        mediaItems={albumItem?.media || []}
+        title={
+          albumItem?.itemType === 'segment' 
+            ? `${albumItem.transport}: ${albumItem.origin.name} → ${albumItem.destination.name}`
+            : albumItem?.location || 'Media Gallery'
+        }
+        description={
+          albumItem?.itemType === 'segment'
+            ? formatDate(albumItem.date)
+            : albumItem ? `${formatDate(albumItem.dateStart)} - ${formatDate(albumItem.dateEnd)}` : ''
+        }
+      />
     </div>
   );
 };

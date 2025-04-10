@@ -5,12 +5,12 @@ import { groupSegmentsByDate } from "../../utils/dateUtils";
 import { debugLog } from "../../utils/mapCalculations";
 import TimelineSegment from "./TimelineSegment";
 import TimelineStay from "./TimelineStay";
-import EnhancedMediaViewer from "./MediaViewer";
+import AlbumOverlay from "./AlbumOverlay"; // Import our new component
 
 /**
- * Updated TimelinePanel with enhanced media viewing capabilities
+ * Updated TimelinePanel with AlbumOverlay integration
  */
-const UpdatedTimelinePanel = ({ 
+const TimelinePanel = ({ 
   travelData, 
   activeItem,
   onItemSelect,
@@ -21,9 +21,10 @@ const UpdatedTimelinePanel = ({
   const [allTimelineItems, setAllTimelineItems] = useState([]);
   // Current focused index for keyboard navigation
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  // Media viewer state
-  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
-  const [mediaViewerItem, setMediaViewerItem] = useState(null);
+  
+  // Album overlay state
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [albumItem, setAlbumItem] = useState(null);
   
   // Process and combine segments and stays into a chronological timeline
   useEffect(() => {
@@ -73,8 +74,8 @@ const UpdatedTimelinePanel = ({
     if (!allTimelineItems.length) return;
     
     const handleKeyDown = (e) => {
-      // Only process if not in media viewer mode
-      if (mediaViewerOpen) return;
+      // Only process if not in album mode
+      if (albumOpen) return;
       
       // Only process if the timeline panel is focused or contains the active element
       const timelineElement = timelinePanelRef.current;
@@ -141,7 +142,7 @@ const UpdatedTimelinePanel = ({
         
         // Check if item has media
         if (item && item.media && item.media.length > 0) {
-          // Open media viewer with this item
+          // Open album with this item
           handleViewMedia(item);
         }
       }
@@ -153,7 +154,7 @@ const UpdatedTimelinePanel = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [allTimelineItems, focusedIndex, onItemSelect, onItemFocus, mediaViewerOpen]);
+  }, [allTimelineItems, focusedIndex, onItemSelect, onItemFocus, albumOpen]);
   
   // Effect to make the timeline focusable
   useEffect(() => {
@@ -168,8 +169,8 @@ const UpdatedTimelinePanel = ({
   
   // Handle viewing media for an item
   const handleViewMedia = (item) => {
-    setMediaViewerItem(item);
-    setMediaViewerOpen(true);
+    setAlbumItem(item);
+    setAlbumOpen(true);
   };
 
   if (!travelData) return (
@@ -186,6 +187,28 @@ const UpdatedTimelinePanel = ({
   // Process the timeline data for display
   // Group segments by date but also include stays
   const segmentsByDate = groupSegmentsByDate(allTimelineItems);
+  
+  // Generate a title for the album based on the item
+  const getAlbumTitle = (item) => {
+    if (!item) return 'Media Gallery';
+    
+    if (item.itemType === 'segment') {
+      return `${item.transport}: ${item.origin.name} → ${item.destination.name}`;
+    } else {
+      return item.location || 'Accommodation';
+    }
+  };
+  
+  // Get description for album
+  const getAlbumDescription = (item) => {
+    if (!item) return '';
+    
+    if (item.itemType === 'segment') {
+      return item.date;
+    } else {
+      return `${item.dateStart} - ${item.dateEnd}`;
+    }
+  };
 
   return (
     <>
@@ -193,7 +216,7 @@ const UpdatedTimelinePanel = ({
         ref={timelinePanelRef} 
         style={{
           ...timelineStyles.container,
-          zIndex: mediaViewerOpen ? 1 : 10, // Lower z-index when media viewer is open
+          zIndex: albumOpen ? 1 : 10, // Lower z-index when album is open
         }}
         className="timeline-panel"
         tabIndex="0" // Make the container focusable
@@ -261,18 +284,19 @@ const UpdatedTimelinePanel = ({
         </div>
       </div>
       
-      {/* Enhanced Media Viewer (only when media is being viewed) */}
-      {mediaViewerOpen && mediaViewerItem && (
-        <EnhancedMediaViewer
-          item={mediaViewerItem}
-          onClose={() => setMediaViewerOpen(false)}
-        />
-      )}
+      {/* Album Overlay */}
+      <AlbumOverlay
+        isOpen={albumOpen}
+        onClose={() => setAlbumOpen(false)}
+        mediaItems={albumItem ? albumItem.media : []}
+        title={getAlbumTitle(albumItem)}
+        description={getAlbumDescription(albumItem)}
+      />
     </>
   );
 };
 
-UpdatedTimelinePanel.propTypes = {
+TimelinePanel.propTypes = {
   travelData: PropTypes.shape({
     tripName: PropTypes.string.isRequired,
     dateRange: PropTypes.string.isRequired,
@@ -284,4 +308,4 @@ UpdatedTimelinePanel.propTypes = {
   onItemFocus: PropTypes.func
 };
 
-export default UpdatedTimelinePanel;
+export default TimelinePanel;

@@ -2,8 +2,8 @@
  * API service for media operations (photos, notes, etc.)
  */
 const MediaAPI = {
-    // Base URL for API endpoints - should match your tripApi.js
-    baseURL: 'http://localhost:5000/api',
+    // Base URL for API endpoints
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
     
     /**
      * Upload a photo file
@@ -16,7 +16,7 @@ const MediaAPI = {
         const formData = new FormData();
         formData.append('photo', photoFile);
         
-        const response = await fetch(`${this.baseURL}/media/upload`, {
+        const response = await fetch(`${this.baseURL}/api/media/upload`, {
           method: 'POST',
           body: formData,
           // Don't set Content-Type header here - browser will add it with boundary
@@ -43,7 +43,7 @@ const MediaAPI = {
      */
     async addMediaToSegment(tripId, segmentId, mediaData) {
       try {
-        const response = await fetch(`${this.baseURL}/media/segment/${tripId}/${segmentId}`, {
+        const response = await fetch(`${this.baseURL}/api/media/segment/${tripId}/${segmentId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -72,7 +72,7 @@ const MediaAPI = {
      */
     async addMediaToStay(tripId, stayId, mediaData) {
       try {
-        const response = await fetch(`${this.baseURL}/media/stay/${tripId}/${stayId}`, {
+        const response = await fetch(`${this.baseURL}/api/media/stay/${tripId}/${stayId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -101,7 +101,7 @@ const MediaAPI = {
      */
     async deleteMediaFromSegment(tripId, segmentId, mediaId) {
       try {
-        const response = await fetch(`${this.baseURL}/media/segment/${tripId}/${segmentId}/${mediaId}`, {
+        const response = await fetch(`${this.baseURL}/api/media/segment/${tripId}/${segmentId}/${mediaId}`, {
           method: 'DELETE',
         });
         
@@ -126,7 +126,7 @@ const MediaAPI = {
      */
     async deleteMediaFromStay(tripId, stayId, mediaId) {
       try {
-        const response = await fetch(`${this.baseURL}/media/stay/${tripId}/${stayId}/${mediaId}`, {
+        const response = await fetch(`${this.baseURL}/api/media/stay/${tripId}/${stayId}/${mediaId}`, {
           method: 'DELETE',
         });
         

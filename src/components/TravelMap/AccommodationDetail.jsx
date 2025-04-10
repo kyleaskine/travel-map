@@ -3,11 +3,12 @@ import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
 import MediaAPI from "../../services/mediaApi";
+import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 
 /**
  * AccommodationDetail component with built-in media management and backend integration
  */
-const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
+const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId, openAlbum }) => {
   const [activeTab, setActiveTab] = useState('details');
   
   // Local state for media
@@ -59,7 +60,7 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
           
           // Fallback for development: create a path like we did before
           const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-          const relativePath = `/images/stays/${friendlyId}/${fileName}`;
+          const relativePath = `/uploads/stays/${friendlyId}/${fileName}`;
           newMedia.content = relativePath;
           
           console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
@@ -256,7 +257,7 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
               <strong>ID:</strong> {accommodation._id}
             </div>
           )}
-          {accommodation.amenities && (
+          {accommodation.amenities && accommodation.amenities.length > 0 && (
             <div style={segmentDetailStyles.detailItem}>
               <strong>Amenities:</strong> {accommodation.amenities.join(', ')}
             </div>
@@ -269,6 +270,16 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
         <div className="p-2">
           {mediaList.length > 0 ? (
             <div>
+              {/* Add album open button */}
+              {openAlbum && (
+                <button
+                  onClick={openAlbum}
+                  className="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+                >
+                  Open Album View
+                </button>
+              )}
+              
               <h4 className="font-medium mb-2">Media Items:</h4>
               <div className="space-y-3">
                 {mediaList.map((media, index) => (
@@ -281,11 +292,13 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
                     {media.type === 'photo' ? (
                       <div className="mt-1">
                         <img 
-                          src={media.content} 
+                          src={getImageUrl(media.content)}
                           alt={media.caption || 'Photo'} 
-                          className="max-h-32 object-contain"
+                          className="max-h-32 object-contain cursor-pointer"
+                          onClick={openAlbum} // Add click handler to open album
                           onError={(e) => {
-                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjYWFhIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBhbGlnbm1lbnQtYmFzZWxpbmU9Im1pZGRsZSI+SW1hZ2Ugbm90IGZvdW5kPC90ZXh0Pjwvc3ZnPg==';
+                            console.error("Failed to load image:", media.content);
+                            e.target.src = getFallbackImageUrl();
                             e.target.style.backgroundColor = '#f0f0f0';
                           }}
                         />
@@ -451,7 +464,8 @@ AccommodationDetail.propTypes = {
   }),
   onClose: PropTypes.func.isRequired,
   onUpdate: PropTypes.func,
-  tripId: PropTypes.string
+  tripId: PropTypes.string,
+  openAlbum: PropTypes.func // New prop for opening the album
 };
 
 export default AccommodationDetail;
