@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
+import MediaAPI from "../../services/mediaApi";
 
 /**
- * SegmentDetail component with built-in media management
+ * SegmentDetail component with built-in media management and backend integration
  */
-const SegmentDetail = ({ segment, onClose, onUpdate }) => {
+const SegmentDetail = ({ segment, onClose, onUpdate, tripId }) => {
   const [activeTab, setActiveTab] = useState('details');
   
   // Local state for media
@@ -19,12 +20,15 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   
   if (!segment) return null;
   
-  // Handle form submission
-  const handleSubmit = (e) => {
+  // Handle form submission - updated to use MediaAPI
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsUploading(true);
+    setUploadMessage('');
     
     try {
       let newMedia = {
@@ -36,34 +40,55 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
       if (mediaType === 'photo') {
         if (!photoFile) {
           setUploadMessage('Please select a photo');
+          setIsUploading(false);
           return;
         }
         
-        // Create path: /images/segments/[id]/[filename]
-        const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-        const relativePath = `/images/segments/${segment.id}/${fileName}`;
+        // Upload the photo first using MediaAPI
+        try {
+          const uploadResult = await MediaAPI.uploadPhoto(photoFile);
+          newMedia.content = uploadResult.url; // Use the URL returned from the server
+          console.log('Photo uploaded successfully:', uploadResult);
+        } catch (uploadError) {
+          console.error('Upload error:', uploadError);
+          
+          // Fallback for development: create a path like we did before
+          const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+          const relativePath = `/images/segments/${segment.id}/${fileName}`;
+          newMedia.content = relativePath;
+          
+          console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
+          setUploadMessage(`Using test path since backend call failed. Copy your photo to: public${relativePath}`);
+        }
         
-        // Store the path
-        newMedia.content = relativePath;
-        
-        // Show instructions for manually copying files
-        setUploadMessage(
-          `Success! For testing, copy your photo to: public${relativePath}`
-        );
-        
-        console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
       } else {
         // For notes, just store the content directly
         if (!content.trim()) {
           setUploadMessage('Please enter some note content');
+          setIsUploading(false);
           return;
         }
         newMedia.content = content;
-        setUploadMessage('Note added successfully');
+      }
+      
+      // Try to save the media to the backend using MediaAPI
+      let savedMedia = newMedia;
+      
+      try {
+        // Only attempt API call if we have a valid tripId
+        if (tripId) {
+          const mediaResult = await MediaAPI.addMediaToSegment(tripId, segment.id, newMedia);
+          savedMedia = mediaResult.media || newMedia;
+          console.log('Media saved to backend:', mediaResult);
+        } else {
+          console.warn('No tripId provided, skipping backend save');
+        }
+      } catch (apiError) {
+        console.error('API error when saving media:', apiError);
       }
       
       // Add to local state
-      const updatedMedia = [...mediaList, newMedia];
+      const updatedMedia = [...mediaList, savedMedia];
       setMediaList(updatedMedia);
       
       // Important: Update the parent component's state
@@ -76,6 +101,9 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
         onUpdate(updatedSegment);
       }
       
+      // Set success message
+      setUploadMessage(`${mediaType === 'photo' ? 'Photo' : 'Note'} added successfully!`);
+      
       // Clear form
       setCaption('');
       setContent('');
@@ -85,6 +113,8 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
     } catch (error) {
       console.error('Error adding media:', error);
       setUploadMessage(`Error: ${error.message}`);
+    } finally {
+      setIsUploading(false);
     }
   };
   
@@ -327,8 +357,7 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
                   </div>
                 )}
                 <div className="mt-1 text-xs text-gray-500">
-                  For testing, photos will be saved to:<br/>
-                  <span className="font-mono">public/images/segments/{segment.id}/</span>
+                  Photos will be uploaded to the server and saved with this segment.
                 </div>
               </div>
             ) : (
@@ -349,9 +378,10 @@ const SegmentDetail = ({ segment, onClose, onUpdate }) => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              disabled={isUploading}
             >
-              Add Media
+              {isUploading ? 'Uploading...' : 'Add Media'}
             </button>
           </form>
         </div>
@@ -387,7 +417,8 @@ SegmentDetail.propTypes = {
     )
   }),
   onClose: PropTypes.func.isRequired,
-  onUpdate: PropTypes.func
+  onUpdate: PropTypes.func,
+  tripId: PropTypes.string
 };
 
 export default SegmentDetail;

@@ -3,8 +3,8 @@ import PropTypes from "prop-types";
 import { timelineStyles } from "../../utils/styleUtils";
 import { groupSegmentsByDate } from "../../utils/dateUtils";
 import { debugLog } from "../../utils/mapCalculations";
-import UpdatedExpandableTimelineSegment from "./ExpandableTimelineSegment";
-import UpdatedExpandableTimelineStay from "./ExpandableTimelineStay"; // Assume you'd create this as well
+import TimelineSegment from "./TimelineSegment";
+import TimelineStay from "./TimelineStay";
 import EnhancedMediaViewer from "./MediaViewer";
 
 /**
@@ -231,7 +231,7 @@ const UpdatedTimelinePanel = ({
                   
                   if (item.itemType === 'stay') {
                     return (
-                      <UpdatedExpandableTimelineStay
+                      <TimelineStay
                         key={item.id}
                         stay={item}
                         isActive={isActive}
@@ -243,7 +243,7 @@ const UpdatedTimelinePanel = ({
                     );
                   } else {
                     return (
-                      <UpdatedExpandableTimelineSegment
+                      <TimelineSegment
                         key={item.id}
                         segment={item}
                         isActive={isActive}

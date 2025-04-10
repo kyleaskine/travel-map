@@ -4,9 +4,9 @@ import { formatDate } from "../../utils/dateUtils";
 import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
- * Updated ExpandableTimelineStay with cleaner media integration
+ * TimelineStay component with integrated media preview
  */
-const UpdatedExpandableTimelineStay = ({ 
+const TimelineStay = ({ 
   stay, 
   isActive, 
   isFocused, 
@@ -22,6 +22,13 @@ const UpdatedExpandableTimelineStay = ({
     }
   };
 
+  // Debug logging to help troubleshoot media issues
+  console.log(`Rendering TimelineStay ${stay.id || stay.location}:`, {
+    hasMedia: stay.media && stay.media.length > 0,
+    mediaCount: stay.media ? stay.media.length : 0,
+    mediaItems: stay.media
+  });
+
   return (
     <div
       id={id}
@@ -30,6 +37,7 @@ const UpdatedExpandableTimelineStay = ({
           ? "border-purple-500" 
           : "border-transparent"
       } transition-all duration-200`}
+      data-testid={`stay-${stay.id || stay.location.replace(/\s+/g, '-').toLowerCase()}`}
     >
       {/* Main timeline item (always visible) */}
       <div
@@ -84,6 +92,7 @@ const UpdatedExpandableTimelineStay = ({
           </div>
         </div>
         
+        {/* Date range */}
         <div
           style={{
             fontSize: "0.75rem",
@@ -95,6 +104,7 @@ const UpdatedExpandableTimelineStay = ({
           {formatDate(stay.dateStart)} - {formatDate(stay.dateEnd)}
         </div>
         
+        {/* Notes (if available) */}
         {stay.notes && (
           <div
             style={{
@@ -113,7 +123,10 @@ const UpdatedExpandableTimelineStay = ({
         
         {/* Media Indicator - only show if there's media */}
         {stay.media && stay.media.length > 0 && (
-          <div className="ml-5 mt-2">
+          <div 
+            className="ml-5 mt-2"
+            data-testid={`media-indicator-${stay.id || stay.location.replace(/\s+/g, '-').toLowerCase()}`}
+          >
             <TimelineMediaIndicator 
               media={stay.media} 
               onClick={handleViewMedia}
@@ -125,8 +138,9 @@ const UpdatedExpandableTimelineStay = ({
   );
 };
 
-UpdatedExpandableTimelineStay.propTypes = {
+TimelineStay.propTypes = {
   stay: PropTypes.shape({
+    id: PropTypes.string,
     location: PropTypes.string.isRequired,
     dateStart: PropTypes.string.isRequired,
     dateEnd: PropTypes.string.isRequired,
@@ -140,11 +154,16 @@ UpdatedExpandableTimelineStay.propTypes = {
       })
     )
   }).isRequired,
-  isActive: PropTypes.bool.isRequired,
+  isActive: PropTypes.bool,
   isFocused: PropTypes.bool,
   onClick: PropTypes.func.isRequired,
   onViewMedia: PropTypes.func,
   id: PropTypes.string
 };
 
-export default UpdatedExpandableTimelineStay;
+TimelineStay.defaultProps = {
+  isActive: false,
+  isFocused: false
+};
+
+export default TimelineStay;

@@ -5,9 +5,9 @@ import { formatDate } from "../../utils/dateUtils";
 import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
- * Updated ExpandableTimelineSegment with cleaner media integration
+ * TimelineSegment component with integrated media preview
  */
-const UpdatedExpandableTimelineSegment = ({ 
+const TimelineSegment = ({ 
   segment, 
   isActive, 
   isFocused, 
@@ -24,6 +24,13 @@ const UpdatedExpandableTimelineSegment = ({
       onViewMedia(segment);
     }
   };
+
+  // Debug logging to help troubleshoot media issues
+  console.log(`Rendering TimelineSegment ${segment.id}:`, {
+    hasMedia: segment.media && segment.media.length > 0,
+    mediaCount: segment.media ? segment.media.length : 0,
+    mediaItems: segment.media
+  });
 
   return (
     <div
@@ -46,6 +53,7 @@ const UpdatedExpandableTimelineSegment = ({
         }}
         onClick={onClick}
         className="flex flex-col cursor-pointer"
+        data-testid={`segment-${segment.id}`}
       >
         <div className="flex items-center justify-between">
           {/* Left side: segment info */}
@@ -66,7 +74,7 @@ const UpdatedExpandableTimelineSegment = ({
             : segment.destination.name}
         </div>
         
-        {/* Added properly styled date */}
+        {/* Date display */}
         <div style={{
           fontSize: "0.75rem",
           marginTop: "0.25rem",
@@ -78,17 +86,19 @@ const UpdatedExpandableTimelineSegment = ({
         
         {/* Media Indicator - only show if there's media */}
         {segment.media && segment.media.length > 0 && (
-          <TimelineMediaIndicator 
-            media={segment.media} 
-            onClick={handleViewMedia}
-          />
+          <div className="ml-5 mt-2" data-testid={`media-indicator-${segment.id}`}>
+            <TimelineMediaIndicator 
+              media={segment.media} 
+              onClick={handleViewMedia}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 };
 
-UpdatedExpandableTimelineSegment.propTypes = {
+TimelineSegment.propTypes = {
   segment: PropTypes.shape({
     id: PropTypes.string.isRequired,
     type: PropTypes.string.isRequired,
@@ -115,4 +125,8 @@ UpdatedExpandableTimelineSegment.propTypes = {
   id: PropTypes.string
 };
 
-export default UpdatedExpandableTimelineSegment;
+TimelineSegment.defaultProps = {
+  isFocused: false
+};
+
+export default TimelineSegment;

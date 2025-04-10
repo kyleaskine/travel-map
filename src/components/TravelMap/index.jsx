@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import _ from "lodash";
 import TripAPI from "../../services/tripApi";
+import MediaAPI from "../../services/mediaApi";
 import { headerStyles, loadingStyles } from "../../utils/styleUtils";
 import {
   debugLog,
@@ -27,6 +28,7 @@ import MapLegend from "./MapLegend";
 import SegmentDetail from "./SegmentDetail";
 import AccommodationDetail from "./AccommodationDetail";
 import ErrorMessage from "../common/ErrorMessage";
+import TripSelector from "./TripSelector";
 
 // Custom hooks
 import useMapLayers from "../../hooks/useMapLayers";
@@ -47,6 +49,7 @@ const TravelMap = () => {
   const [lastFitBoundsSegmentId, setLastFitBoundsSegmentId] = useState(null);
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [availableTrips, setAvailableTrips] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false); // Add this state for refresh indicator
 
   // Add a rendering lock to prevent duplicate updates
   const isRenderingRef = useRef(false);
@@ -54,11 +57,66 @@ const TravelMap = () => {
   // Initialize map layers when map is ready
   const { layerGroups, clearAllLayers } = useMapLayers(mapInstance);
 
+  // Function to refresh trip data from the server
+  const refreshTripData = useCallback(async () => {
+    if (selectedTripId) {
+      try {
+        setIsRefreshing(true);
+        debugLog("DATA", "Refreshing trip data from API");
+        
+        const refreshedTrip = await TripAPI.getTripById(selectedTripId);
+        setTravelData(refreshedTrip);
+        
+        // Update active/focused items with fresh data if they exist
+        if (activeItem) {
+          // For segments
+          if (activeItem.itemType === 'segment') {
+            const updatedSegment = refreshedTrip.segments.find(s => s.id === activeItem.id);
+            if (updatedSegment) {
+              setActiveItem({
+                ...updatedSegment,
+                itemType: 'segment'
+              });
+            }
+          } 
+          // For stays
+          else if (activeItem.itemType === 'stay') {
+            const stayId = activeItem.id || `stay-${activeItem.location.replace(/\s+/g, '-').toLowerCase()}`;
+            const updatedStay = refreshedTrip.stays.find(s => {
+              const compareId = `stay-${s.location.replace(/\s+/g, '-').toLowerCase()}`;
+              return s._id === activeItem._id || compareId === stayId;
+            });
+            
+            if (updatedStay) {
+              setActiveItem({
+                ...updatedStay,
+                itemType: 'stay',
+                id: updatedStay._id || `stay-${updatedStay.location.replace(/\s+/g, '-').toLowerCase()}`
+              });
+            }
+          }
+        }
+        
+        // Similarly update focused item if it exists
+        if (focusedItem) {
+          // Similar logic as above for focused item
+        }
+        
+        debugLog("DATA", "Trip data refreshed successfully");
+      } catch (error) {
+        console.error("Failed to refresh trip data:", error);
+        debugLog("ERROR", "Failed to refresh trip data", error);
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
+  }, [selectedTripId, activeItem, focusedItem]);
+
   /**
    * Enhanced handleItemUpdate function to ensure media updates are properly propagated
    * @param {Object} updatedItem - Item with updated properties
    */
-  const handleItemUpdate = (updatedItem) => {
+  const handleItemUpdate = async (updatedItem) => {
     // Make a copy of the travel data
     const updatedTravelData = {...travelData};
     
@@ -92,14 +150,28 @@ const TravelMap = () => {
             ...updatedItem
           });
         }
+        
+        // Sync with server
+        try {
+          await TripAPI.updateTrip(travelData._id, {
+            segments: updatedTravelData.segments
+          });
+          console.log('Trip updated on server');
+          
+          // Refresh data from server to ensure consistency
+          await refreshTripData();
+        } catch (err) {
+          console.error('Failed to update trip on server:', err);
+        }
       }
     } else {
       // It's a stay
-      const stayId = updatedItem.id || `stay-${updatedItem.location.replace(/\s+/g, '-').toLowerCase()}`;
+      const stayId = updatedItem._id || updatedItem.id || `stay-${updatedItem.location.replace(/\s+/g, '-').toLowerCase()}`;
       const stayName = stayId.replace('stay-', '').replace(/-/g, ' ');
       
-      const stayIndex = updatedTravelData.stays.findIndex(
-        s => s.location.toLowerCase() === stayName.toLowerCase()
+      const stayIndex = updatedTravelData.stays.findIndex(s => 
+        s._id === updatedItem._id || 
+        s.location.toLowerCase() === stayName.toLowerCase()
       );
       
       if (stayIndex !== -1) {
@@ -111,7 +183,7 @@ const TravelMap = () => {
         console.log(`Updated stay: ${updatedItem.location}`);
         
         // If we're updating the active item, update that too
-        if (activeItem && activeItem.id === stayId) {
+        if (activeItem && (activeItem._id === updatedItem._id || activeItem.id === stayId)) {
           setActiveItem({
             ...activeItem,
             ...updatedItem
@@ -119,35 +191,30 @@ const TravelMap = () => {
         }
         
         // If we're updating the focused item, update that too
-        if (focusedItem && focusedItem.id === stayId) {
+        if (focusedItem && (focusedItem._id === updatedItem._id || focusedItem.id === stayId)) {
           setFocusedItem({
             ...focusedItem,
             ...updatedItem
           });
+        }
+        
+        // Sync with server
+        try {
+          await TripAPI.updateTrip(travelData._id, {
+            stays: updatedTravelData.stays
+          });
+          console.log('Trip updated on server');
+          
+          // Refresh data from server to ensure consistency
+          await refreshTripData();
+        } catch (err) {
+          console.error('Failed to update trip on server:', err);
         }
       }
     }
     
     // Update the state
     setTravelData(updatedTravelData);
-    
-    // Optionally, sync with server
-    // This is commented out pending API implementation
-    /*
-    if (updatedItem.itemType === 'segment') {
-      TripAPI.updateTrip(travelData._id, {
-        segments: updatedTravelData.segments
-      })
-        .then(() => console.log('Trip updated on server'))
-        .catch(err => console.error('Failed to update trip on server:', err));
-    } else {
-      TripAPI.updateTrip(travelData._id, {
-        stays: updatedTravelData.stays
-      })
-        .then(() => console.log('Trip updated on server'))
-        .catch(err => console.error('Failed to update trip on server:', err));
-    }
-    */
   };
 
   // Fetch trips from API
@@ -302,10 +369,10 @@ const TravelMap = () => {
         // Add accommodations in world view too
         if (layerGroups.stays) {
           travelData.stays.forEach((stay) => {
-            const stayId = `stay-${stay.location
+            const stayId = stay._id || `stay-${stay.location
               .replace(/\s+/g, "-")
               .toLowerCase()}`;
-            const isActive = displayItem && displayItem.id === stayId;
+            const isActive = displayItem && (displayItem._id === stay._id || displayItem.id === stayId);
             const iconToUse = isActive
               ? createAccommodationIcon(true)
               : createAccommodationIcon();
@@ -430,10 +497,10 @@ const TravelMap = () => {
         // Add stay locations
         if (layerGroups.stays) {
           travelData.stays.forEach((stay) => {
-            const stayId = `stay-${stay.location
+            const stayId = stay._id || `stay-${stay.location
               .replace(/\s+/g, "-")
               .toLowerCase()}`;
-            const isActive = displayItem && displayItem.id === stayId;
+            const isActive = displayItem && (displayItem._id === stay._id || displayItem.id === stayId);
             const iconToUse = isActive
               ? createAccommodationIcon(true)
               : createAccommodationIcon();
@@ -1180,14 +1247,19 @@ const TravelMap = () => {
     }
   };
 
+  // Manual refresh handler
+  const handleManualRefresh = () => {
+    refreshTripData();
+  };
+
   // Map error handler
   const handleMapError = (error) => {
     setMapError(error);
   };
   
   // Trip selector change handler
-  const handleTripChange = (e) => {
-    setSelectedTripId(e.target.value);
+  const handleTripChange = (tripId) => {
+    setSelectedTripId(tripId);
   };
 
   // Loading state handling
@@ -1204,32 +1276,54 @@ const TravelMap = () => {
         backgroundColor: "#f3f4f6",
       }}
     >
-      {/* Header with Trip Selector */}
+      {/* Header with Trip Selector and Refresh Button */}
       <header style={headerStyles.header}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-          <h1 style={headerStyles.title}>
-            {travelData ? travelData.tripName : "Travel Map"}
-          </h1>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <h1 style={headerStyles.title}>
+              {travelData ? travelData.tripName : "Travel Map"}
+            </h1>
+            <button 
+              onClick={handleManualRefresh}
+              style={{
+                marginLeft: "1rem",
+                padding: "0.25rem 0.5rem",
+                borderRadius: "0.25rem",
+                backgroundColor: isRefreshing ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.2)",
+                color: "white",
+                border: "none",
+                fontSize: "0.75rem",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center"
+              }}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <>
+                  <span style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%", marginRight: "0.25rem", animation: "spin 1s linear infinite" }}></span>
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <svg style={{ width: "12px", height: "12px", marginRight: "0.25rem" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 4v6h-6"></path>
+                    <path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                    <path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  Refresh
+                </>
+              )}
+            </button>
+          </div>
           
           {availableTrips.length > 1 && (
-            <select 
-              value={selectedTripId} 
-              onChange={handleTripChange}
-              style={{
-                padding: "0.5rem",
-                borderRadius: "0.375rem",
-                border: "1px solid white",
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                color: "white",
-                fontWeight: "500"
-              }}
-            >
-              {availableTrips.map(trip => (
-                <option key={trip._id} value={trip._id}>
-                  {trip.tripName}
-                </option>
-              ))}
-            </select>
+            <TripSelector 
+              trips={availableTrips}
+              selectedTripId={selectedTripId} 
+              onTripChange={handleTripChange}
+            />
           )}
         </div>
         <p style={headerStyles.subtitle}>{travelData?.dateRange}</p>
@@ -1278,6 +1372,7 @@ const TravelMap = () => {
                         else setFocusedItem(null);
                       }}
                       onUpdate={handleItemUpdate}
+                      tripId={travelData?._id}
                     />
                   );
                 } else if (displayItem.itemType === "stay") {
@@ -1289,6 +1384,7 @@ const TravelMap = () => {
                         else setFocusedItem(null);
                       }}
                       onUpdate={handleItemUpdate}
+                      tripId={travelData?._id}
                     />
                   );
                 }

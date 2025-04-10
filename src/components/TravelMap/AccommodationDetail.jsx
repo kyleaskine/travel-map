@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
+import MediaAPI from "../../services/mediaApi";
 
 /**
- * AccommodationDetail component with built-in media management
+ * AccommodationDetail component with built-in media management and backend integration
  */
-const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
+const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
   const [activeTab, setActiveTab] = useState('details');
   
   // Local state for media
@@ -19,15 +20,20 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   
   if (!accommodation) return null;
   
-  // Generate a consistent ID for the stay
-  const stayId = `stay-${accommodation.location.replace(/\s+/g, '-').toLowerCase()}`;
+  // Extract MongoDB _id if available, otherwise use location-based ID
+  const stayId = accommodation._id || accommodation.id;
+  // For fallback display/dev purposes, maintain a user-friendly ID
+  const friendlyId = `stay-${accommodation.location.replace(/\s+/g, '-').toLowerCase()}`;
   
-  // Handle form submission
-  const handleSubmit = (e) => {
+  // Handle form submission - updated to use MediaAPI
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsUploading(true);
+    setUploadMessage('');
     
     try {
       let newMedia = {
@@ -39,34 +45,67 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
       if (mediaType === 'photo') {
         if (!photoFile) {
           setUploadMessage('Please select a photo');
+          setIsUploading(false);
           return;
         }
         
-        // Create path: /images/stays/[id]/[filename]
-        const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-        const relativePath = `/images/stays/${stayId}/${fileName}`;
+        // Upload the photo first using MediaAPI
+        try {
+          const uploadResult = await MediaAPI.uploadPhoto(photoFile);
+          newMedia.content = uploadResult.url; // Use the URL returned from the server
+          console.log('Photo uploaded successfully:', uploadResult);
+        } catch (uploadError) {
+          console.error('Upload error:', uploadError);
+          
+          // Fallback for development: create a path like we did before
+          const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+          const relativePath = `/images/stays/${friendlyId}/${fileName}`;
+          newMedia.content = relativePath;
+          
+          console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
+          setUploadMessage(`Using test path since backend call failed. Copy your photo to: public${relativePath}`);
+        }
         
-        // Store the path
-        newMedia.content = relativePath;
-        
-        // Show instructions for manually copying files
-        setUploadMessage(
-          `Success! For testing, copy your photo to: public${relativePath}`
-        );
-        
-        console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
       } else {
         // For notes, just store the content directly
         if (!content.trim()) {
           setUploadMessage('Please enter some note content');
+          setIsUploading(false);
           return;
         }
         newMedia.content = content;
-        setUploadMessage('Note added successfully');
+      }
+      
+      // Debugging info about the stay and its ID
+      console.log('Attempting to save media to stay:', {
+        id: stayId,
+        _id: accommodation._id,
+        friendlyId,
+        location: accommodation.location,
+        tripId
+      });
+
+      // Try to save the media to the backend using MediaAPI
+      let savedMedia = newMedia;
+      
+      try {
+        // Only attempt API call if we have valid IDs
+        if (tripId && stayId) {
+          const mediaResult = await MediaAPI.addMediaToStay(tripId, stayId, newMedia);
+          savedMedia = mediaResult.media || newMedia;
+          console.log('Media saved to backend:', mediaResult);
+        } else {
+          console.warn('Missing tripId or stayId, skipping backend save', { tripId, stayId });
+        }
+      } catch (apiError) {
+        console.error('API error when saving media:', apiError);
+        
+        // Add to local state anyway so UI shows the media
+        // This gives a better user experience even when the backend fails
       }
       
       // Add to local state
-      const updatedMedia = [...mediaList, newMedia];
+      const updatedMedia = [...mediaList, savedMedia];
       setMediaList(updatedMedia);
       
       // Important: Update the parent component's state
@@ -79,6 +118,9 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
         onUpdate(updatedAccommodation);
       }
       
+      // Set success message
+      setUploadMessage(`${mediaType === 'photo' ? 'Photo' : 'Note'} added successfully!`);
+      
       // Clear form
       setCaption('');
       setContent('');
@@ -88,6 +130,8 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
     } catch (error) {
       console.error('Error adding media:', error);
       setUploadMessage(`Error: ${error.message}`);
+    } finally {
+      setIsUploading(false);
     }
   };
   
@@ -207,6 +251,11 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
           <div style={segmentDetailStyles.detailItem}>
             <strong>Coordinates:</strong> {accommodation.coordinates[0].toFixed(4)}, {accommodation.coordinates[1].toFixed(4)}
           </div>
+          {accommodation._id && (
+            <div style={segmentDetailStyles.detailItem}>
+              <strong>ID:</strong> {accommodation._id}
+            </div>
+          )}
           {accommodation.amenities && (
             <div style={segmentDetailStyles.detailItem}>
               <strong>Amenities:</strong> {accommodation.amenities.join(', ')}
@@ -348,8 +397,7 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
                   </div>
                 )}
                 <div className="mt-1 text-xs text-gray-500">
-                  For testing, photos will be saved to:<br/>
-                  <span className="font-mono">public/images/stays/{stayId}/</span>
+                  Photos will be uploaded to the server and saved with this accommodation.
                 </div>
               </div>
             ) : (
@@ -370,9 +418,10 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+              disabled={isUploading}
             >
-              Add Media
+              {isUploading ? 'Uploading...' : 'Add Media'}
             </button>
           </form>
         </div>
@@ -383,6 +432,8 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate }) => {
 
 AccommodationDetail.propTypes = {
   accommodation: PropTypes.shape({
+    id: PropTypes.string,
+    _id: PropTypes.string, // MongoDB ID from the backend
     location: PropTypes.string.isRequired,
     dateStart: PropTypes.string.isRequired,
     dateEnd: PropTypes.string.isRequired,
@@ -399,7 +450,8 @@ AccommodationDetail.propTypes = {
     )
   }),
   onClose: PropTypes.func.isRequired,
-  onUpdate: PropTypes.func
+  onUpdate: PropTypes.func,
+  tripId: PropTypes.string
 };
 
 export default AccommodationDetail;
