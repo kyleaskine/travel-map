@@ -5,6 +5,7 @@ import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
  * TimelineStay component with integrated media preview
+ * Fixed to properly handle media click events
  */
 const TimelineStay = ({ 
   stay, 
@@ -14,10 +15,10 @@ const TimelineStay = ({
   onViewMedia,
   id 
 }) => {
-  // Handle View Media click
+  // Handle View Media click - Explicitly stop propagation to prevent parent click handler
   const handleViewMedia = (e) => {
-    e.stopPropagation();
-    if (onViewMedia) {
+    e.stopPropagation(); // This is crucial to stop the click event from reaching parent
+    if (onViewMedia && stay.media && stay.media.length > 0) {
       onViewMedia(stay);
     }
   };
@@ -25,8 +26,7 @@ const TimelineStay = ({
   // Debug logging to help troubleshoot media issues
   console.log(`Rendering TimelineStay ${stay.id || stay.location}:`, {
     hasMedia: stay.media && stay.media.length > 0,
-    mediaCount: stay.media ? stay.media.length : 0,
-    mediaItems: stay.media
+    mediaCount: stay.media ? stay.media.length : 0
   });
 
   return (
@@ -126,6 +126,7 @@ const TimelineStay = ({
           <div 
             className="ml-5 mt-2"
             data-testid={`media-indicator-${stay.id || stay.location.replace(/\s+/g, '-').toLowerCase()}`}
+            onClick={handleViewMedia}
           >
             <TimelineMediaIndicator 
               media={stay.media} 
@@ -150,7 +151,8 @@ TimelineStay.propTypes = {
       PropTypes.shape({
         type: PropTypes.string.isRequired,
         content: PropTypes.string.isRequired,
-        caption: PropTypes.string
+        caption: PropTypes.string,
+        dateCreated: PropTypes.string
       })
     )
   }).isRequired,

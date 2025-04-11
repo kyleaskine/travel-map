@@ -4,7 +4,7 @@ import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 
 /**
  * AlbumOverlay component - Enhanced photo gallery that displays as an overlay
- * Based on the PhotoGallery component but adapted to work as a modal overlay
+ * Fixed for better note display and improved navigation
  */
 const AlbumOverlay = ({ 
   isOpen, 
@@ -17,27 +17,47 @@ const AlbumOverlay = ({
   // State for currently selected image
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
   const [infoVisible, setInfoVisible] = useState(true);
+  const [viewType, setViewType] = useState('all'); // 'all', 'photos', 'notes'
   
   // Reset the selected index when media items change or when the overlay opens
   useEffect(() => {
     if (isOpen) {
       setSelectedIndex(initialIndex);
+      
+      // Automatically detect what media types are available
+      const hasPhotos = mediaItems?.some(item => item.type === 'photo');
+      const hasNotes = mediaItems?.some(item => item.type === 'note');
+      
+      if (hasPhotos && !hasNotes) {
+        setViewType('photos');
+      } else if (hasNotes && !hasPhotos) {
+        setViewType('notes');
+      } else {
+        setViewType('all');
+      }
     }
   }, [isOpen, initialIndex, mediaItems]);
-
-  // Get the total number of media items
-  const totalItems = mediaItems ? mediaItems.length : 0;
+  
+  // Filter media items based on view type
+  const filteredMediaItems = viewType === 'all' 
+    ? mediaItems 
+    : viewType === 'photos' 
+      ? mediaItems?.filter(item => item.type === 'photo') 
+      : mediaItems?.filter(item => item.type === 'note');
+  
+  // Get the currently selected item
+  const currentItem = filteredMediaItems?.[selectedIndex];
   
   // Navigate to next and previous images
   const nextImage = useCallback(() => {
-    if (!totalItems) return;
-    setSelectedIndex(prev => (prev === totalItems - 1) ? 0 : prev + 1);
-  }, [totalItems]);
+    if (!filteredMediaItems?.length) return;
+    setSelectedIndex(prev => (prev === filteredMediaItems.length - 1) ? 0 : prev + 1);
+  }, [filteredMediaItems]);
   
   const prevImage = useCallback(() => {
-    if (!totalItems) return;
-    setSelectedIndex(prev => (prev === 0) ? totalItems - 1 : prev - 1);
-  }, [totalItems]);
+    if (!filteredMediaItems?.length) return;
+    setSelectedIndex(prev => (prev === 0) ? filteredMediaItems.length - 1 : prev - 1);
+  }, [filteredMediaItems]);
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -66,8 +86,9 @@ const AlbumOverlay = ({
     return null;
   }
   
-  // Get the current media item
-  const currentItem = mediaItems[selectedIndex];
+  // Count media types
+  const photoCount = mediaItems.filter(item => item.type === 'photo').length;
+  const noteCount = mediaItems.filter(item => item.type === 'note').length;
   
   // Determine if this is a photo or note
   const isPhoto = currentItem && currentItem.type === 'photo';
@@ -83,10 +104,49 @@ const AlbumOverlay = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <h2 className="text-xl font-semibold">{title || 'Photo Gallery'}</h2>
+          <h2 className="text-xl font-semibold">{title || 'Media Gallery'}</h2>
           {description && <p className="text-sm text-gray-300">{description}</p>}
         </div>
         <div className="flex space-x-2">
+          {/* Media type filter buttons */}
+          {photoCount > 0 && noteCount > 0 && (
+            <div className="flex bg-gray-800 rounded-lg mr-2">
+              <button
+                onClick={() => {
+                  setViewType('all');
+                  setSelectedIndex(0);
+                }}
+                className={`px-2 py-1 text-sm rounded-l-lg ${
+                  viewType === 'all' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => {
+                  setViewType('photos');
+                  setSelectedIndex(0);
+                }}
+                className={`px-2 py-1 text-sm ${
+                  viewType === 'photos' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Photos ({photoCount})
+              </button>
+              <button
+                onClick={() => {
+                  setViewType('notes');
+                  setSelectedIndex(0);
+                }}
+                className={`px-2 py-1 text-sm rounded-r-lg ${
+                  viewType === 'notes' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Notes ({noteCount})
+              </button>
+            </div>
+          )}
+        
           <button
             onClick={() => setInfoVisible(!infoVisible)}
             className="p-2 text-gray-300 hover:text-white"
@@ -117,97 +177,122 @@ const AlbumOverlay = ({
         className="flex-grow flex flex-col items-center justify-center p-4 relative"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Main media display */}
-        <div className="relative max-w-5xl max-h-[70vh] flex items-center justify-center">
-          {isPhoto ? (
-            <img 
-              src={getImageUrl(currentItem.content)}
-              alt={currentItem.caption || `Image ${selectedIndex + 1}`} 
-              className="max-w-full max-h-[70vh] object-contain"
-              onError={(e) => {
-                console.error("Failed to load image:", currentItem.content);
-                e.target.src = getFallbackImageUrl();
-              }}
-            />
-          ) : (
-            <div className="bg-white bg-opacity-10 p-6 rounded-lg max-w-full max-h-[70vh] overflow-auto">
-              <div className="text-white whitespace-pre-wrap">
-                {currentItem.content}
+        {filteredMediaItems.length > 0 ? (
+          <>
+            {/* Main media display */}
+            <div className="relative max-w-5xl max-h-[70vh] flex items-center justify-center">
+              {isPhoto ? (
+                <img 
+                  src={getImageUrl(currentItem.content)}
+                  alt={currentItem.caption || `Image ${selectedIndex + 1}`} 
+                  className="max-w-full max-h-[70vh] object-contain"
+                  onError={(e) => {
+                    console.error("Failed to load image:", currentItem.content);
+                    e.target.src = getFallbackImageUrl();
+                  }}
+                />
+              ) : (
+                <div className="bg-gray-800 p-6 rounded-lg max-w-full max-h-[70vh] overflow-auto">
+                  <div className="text-white whitespace-pre-wrap">
+                    {currentItem?.content || 'No content available'}
+                  </div>
+                </div>
+              )}
+
+              {/* Navigation arrows */}
+              {filteredMediaItems.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      prevImage();
+                    }}
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
+                    aria-label="Previous image"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      nextImage();
+                    }}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
+                    aria-label="Next image"
+                  >
+                    →
+                  </button>
+                </>
+              )}
+              
+              {/* Caption overlay */}
+              {infoVisible && currentItem?.caption && (
+                <div className="absolute left-0 right-0 bottom-0 bg-black bg-opacity-70 text-white p-3 text-center">
+                  {currentItem.caption}
+                </div>
+              )}
+              
+              {/* Counter */}
+              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
+                {selectedIndex + 1} / {filteredMediaItems.length}
               </div>
             </div>
-          )}
-
-          {/* Navigation arrows */}
-          {totalItems > 1 && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  prevImage();
-                }}
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                aria-label="Previous image"
-              >
-                ←
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  nextImage();
-                }}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                aria-label="Next image"
-              >
-                →
-              </button>
-            </>
-          )}
-          
-          {/* Caption overlay */}
-          {infoVisible && currentItem.caption && (
-            <div className="absolute left-0 right-0 bottom-0 bg-black bg-opacity-70 text-white p-3 text-center">
-              {currentItem.caption}
-            </div>
-          )}
-          
-          {/* Counter */}
-          <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
-            {selectedIndex + 1} / {totalItems}
-          </div>
-        </div>
-        
-        {/* Thumbnails */}
-        {totalItems > 1 && (
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2 max-w-5xl">
-            {mediaItems.map((item, index) => {
-              // Skip notes in the thumbnail view
-              if (item.type !== 'photo') return null;
-              
-              return (
-                <div 
-                  key={index}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedIndex(index);
-                  }}
-                  className={`cursor-pointer flex-shrink-0 transition-opacity ${
-                    selectedIndex === index 
-                      ? 'ring-2 ring-indigo-500 opacity-100' 
-                      : 'opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <img 
-                    src={getImageUrl(item.content)}
-                    alt={item.caption || `Thumbnail ${index + 1}`} 
-                    className="h-20 w-20 object-cover rounded"
-                    onError={(e) => {
-                      e.target.src = getFallbackImageUrl();
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
+            
+            {/* Media thumbnails */}
+            {filteredMediaItems.length > 1 && (
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-2 max-w-5xl">
+                {filteredMediaItems.map((item, index) => {
+                  if (item.type === 'photo') {
+                    return (
+                      <div 
+                        key={index}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIndex(index);
+                        }}
+                        className={`cursor-pointer flex-shrink-0 transition-opacity ${
+                          selectedIndex === index 
+                            ? 'ring-2 ring-indigo-500 opacity-100' 
+                            : 'opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <img 
+                          src={getImageUrl(item.content)}
+                          alt={item.caption || `Thumbnail ${index + 1}`} 
+                          className="h-20 w-20 object-cover rounded"
+                          onError={(e) => {
+                            e.target.src = getFallbackImageUrl();
+                          }}
+                        />
+                      </div>
+                    );
+                  } else {
+                    // For notes, show a thumbnail representation
+                    return (
+                      <div 
+                        key={index}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIndex(index);
+                        }}
+                        className={`cursor-pointer flex-shrink-0 transition-opacity ${
+                          selectedIndex === index 
+                            ? 'ring-2 ring-indigo-500 opacity-100' 
+                            : 'opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <div className="h-20 w-20 bg-gray-700 rounded flex items-center justify-center text-xs text-white p-1 overflow-hidden">
+                          {item.caption || item.content.substring(0, 30)}
+                        </div>
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-white text-lg">No media items available</div>
         )}
       </div>
       

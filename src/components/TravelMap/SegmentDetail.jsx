@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
@@ -11,10 +11,11 @@ import AlbumView from "./AlbumView";
 /**
  * Enhanced SegmentDetail component with albums support
  * Fixed to properly update when switching between different segments
- * Fixed to prevent duplicate album creation
+ * Fixed to prevent map wheel scrolling when hovering over detail panel
  */
 const SegmentDetail = ({ segment, onClose, onUpdate, tripId }) => {
   const [activeTab, setActiveTab] = useState('details');
+  const detailContainerRef = useRef(null); // Ref for the container element
   
   // Local state for media and albums
   const [mediaList, setMediaList] = useState([]);
@@ -66,6 +67,61 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId }) => {
       loadAlbums();
     }
   }, [tripId, segment, segment?.id, loadAlbums]);
+  
+  // Improved mouse wheel event handling to prevent scrolling map
+  useEffect(() => {
+    // Use the ref directly instead of querySelector
+    const detailContainer = detailContainerRef.current;
+    
+    if (!detailContainer) {
+      console.log("Detail container ref not available");
+      return;
+    }
+    
+    console.log("Adding wheel event listener to detail container");
+    
+    // Function to prevent wheel events from propagating to map
+    const preventWheelPropagation = (e) => {
+      // Stop the event from reaching the map
+      e.stopPropagation();
+      
+      // Get current scroll position and limits
+      const { scrollHeight, clientHeight, scrollTop } = detailContainer;
+      const isAtTop = scrollTop <= 0;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1; // -1 for rounding errors
+      
+      // If at the limits and trying to scroll further in that direction, let the map handle it
+      // Otherwise, handle scrolling within the container
+      if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
+        // At limits, allow default (map zoom)
+        console.log("At scroll limit, allowing default");
+      } else {
+        // Not at limits, prevent default and handle scroll manually
+        e.preventDefault();
+        console.log("Handling scroll within container");
+        
+        // Manual scroll (smoother than letting the browser do it)
+        detailContainer.scrollTop += e.deltaY;
+      }
+    };
+    
+    // Add event listener with capture phase to ensure it gets the event first
+    detailContainer.addEventListener('wheel', preventWheelPropagation, { 
+      passive: false,
+      capture: true  // This is important to capture the event before it reaches other handlers
+    });
+    
+    // Clean up function
+    return () => {
+      console.log("Removing wheel event listener");
+      if (detailContainer) {
+        detailContainer.removeEventListener('wheel', preventWheelPropagation, { 
+          passive: false,
+          capture: true
+        });
+      }
+    };
+  }, []);
   
   if (!segment) return null;
   
@@ -178,7 +234,7 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId }) => {
     }
   };
   
-  // Handle album creation - THIS FUNCTION NOW MAKES THE API CALL
+  // Handle album creation
   const handleAlbumCreated = async (albumData) => {
     try {
       console.log('Creating album with data:', albumData);
@@ -213,12 +269,15 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId }) => {
 
   return (
     <>
-      <div style={{
-        ...segmentDetailStyles.container,
-        width: "360px", // Wider to accommodate form and albums
-        maxHeight: "450px",
-        overflowY: "auto"
-      }}>
+      <div 
+        ref={detailContainerRef} // Add the ref here
+        style={{
+          ...segmentDetailStyles.container,
+          width: "360px", // Wider to accommodate form and albums
+          maxHeight: "450px",
+          overflowY: "auto"
+        }}
+      >
         <div style={segmentDetailStyles.header}>
           <h3 style={segmentDetailStyles.title}>
             {segment.transport}

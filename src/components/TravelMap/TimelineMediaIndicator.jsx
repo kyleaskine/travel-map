@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import PropTypes from "prop-types";
 
 /**
@@ -6,18 +6,6 @@ import PropTypes from "prop-types";
  * Shows a small preview and count of available media
  */
 const TimelineMediaIndicator = ({ media, onClick }) => {
-  const [mediaCount, setMediaCount] = useState(0);
-  
-  // Force component to update when media changes
-  useEffect(() => {
-    if (media && media.length > 0) {
-      console.log("TimelineMediaIndicator received media:", media.length, "items");
-      setMediaCount(media.length);
-    } else {
-      console.log("TimelineMediaIndicator received no media");
-    }
-  }, [media]);
-
   // If no media, don't render anything
   if (!media || media.length === 0) {
     return null;
@@ -33,10 +21,21 @@ const TimelineMediaIndicator = ({ media, onClick }) => {
   // Key for forcing re-render when media changes
   const renderKey = `media-${photoCount}-${noteCount}-${Date.now()}`;
 
+  // Function to handle click events and prevent bubbling
+  const handleClick = (e) => {
+    if (e) {
+      e.stopPropagation(); // Stop event bubbling
+      e.preventDefault(); // Prevent default behavior
+    }
+    if (onClick) {
+      onClick(e);
+    }
+  };
+
   return (
     <div 
       className="flex items-center space-x-2 mt-2 cursor-pointer"
-      onClick={onClick}
+      onClick={handleClick}
       key={renderKey}
       data-testid="timeline-media-indicator"
       data-media-count={media.length}

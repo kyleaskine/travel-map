@@ -6,6 +6,7 @@ import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
  * TimelineSegment component with integrated media preview
+ * Fixed to properly handle media click events
  */
 const TimelineSegment = ({ 
   segment, 
@@ -17,19 +18,17 @@ const TimelineSegment = ({
 }) => {
   const MAX_NAME_LENGTH = 15;
   
-  // Handle View Media click
+  // Handle View Media click - Explicitly stop propagation to prevent parent click handler
   const handleViewMedia = (e) => {
-    e.stopPropagation();
-    if (onViewMedia) {
+    e.stopPropagation(); // This is crucial to stop the click event from reaching parent
+    if (onViewMedia && segment.media && segment.media.length > 0) {
       onViewMedia(segment);
     }
   };
 
-  // Debug logging to help troubleshoot media issues
   console.log(`Rendering TimelineSegment ${segment.id}:`, {
     hasMedia: segment.media && segment.media.length > 0,
-    mediaCount: segment.media ? segment.media.length : 0,
-    mediaItems: segment.media
+    mediaCount: segment.media ? segment.media.length : 0
   });
 
   return (
@@ -86,7 +85,11 @@ const TimelineSegment = ({
         
         {/* Media Indicator - only show if there's media */}
         {segment.media && segment.media.length > 0 && (
-          <div className="ml-5 mt-2" data-testid={`media-indicator-${segment.id}`}>
+          <div 
+            className="ml-5 mt-2" 
+            data-testid={`media-indicator-${segment.id}`}
+            onClick={handleViewMedia}
+          >
             <TimelineMediaIndicator 
               media={segment.media} 
               onClick={handleViewMedia}
@@ -114,7 +117,8 @@ TimelineSegment.propTypes = {
       PropTypes.shape({
         type: PropTypes.string.isRequired,
         content: PropTypes.string.isRequired,
-        caption: PropTypes.string
+        caption: PropTypes.string,
+        dateCreated: PropTypes.string
       })
     )
   }).isRequired,
