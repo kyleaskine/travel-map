@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
+import AlbumAPI from '../../services/albumApi';
 
 /**
- * Enhanced AlbumView component that displays a collection of albums
- * and their contents in a gallery-like interface
+ * Enhanced AlbumView component for viewing album contents
+ * Supports the new album-centric architecture
  */
 const AlbumView = ({
   isOpen,
@@ -12,12 +13,19 @@ const AlbumView = ({
   albums = [],
   selectedAlbumId = null,
   title,
-  description
+  description,
+  onAlbumUpdated
 }) => {
   // State management
   const [currentAlbumIndex, setCurrentAlbumIndex] = useState(0);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [infoVisible, setInfoVisible] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Album and media state
+  const [loadedAlbums, setLoadedAlbums] = useState([]);
+  const [mediaItems, setMediaItems] = useState([]);
   const [viewMode, setViewMode] = useState('album'); // 'album' or 'media'
   
   // Effect to reset indices when albums change or component reopens
@@ -37,18 +45,68 @@ const AlbumView = ({
       
       setCurrentMediaIndex(0);
       setViewMode('album');
+      setLoadedAlbums(albums);
     }
   }, [isOpen, albums, selectedAlbumId]);
   
+  // Load album with all its media items
+  const loadAlbumWithMedia = useCallback(async (albumId) => {
+    if (!albumId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Get complete album data with media items
+      const albumData = await AlbumAPI.getAlbumById(albumId);
+      
+      // Find the album in our list and update it
+      setLoadedAlbums(prevAlbums => {
+        const updatedAlbums = [...prevAlbums];
+        const index = updatedAlbums.findIndex(a => a._id === albumId);
+        
+        if (index !== -1) {
+          updatedAlbums[index] = {
+            ...updatedAlbums[index],
+            ...albumData
+          };
+        } else {
+          updatedAlbums.push(albumData);
+        }
+        
+        return updatedAlbums;
+      });
+      
+      // Set media items for the current album
+      setMediaItems(albumData.mediaItems || []);
+      
+    } catch (error) {
+      console.error(`Error loading album ${albumId}:`, error);
+      setError(`Failed to load album: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+  
+  // Load album media when current album changes
+  useEffect(() => {
+    if (isOpen && loadedAlbums.length > 0) {
+      const currentAlbum = loadedAlbums[currentAlbumIndex];
+      if (currentAlbum && currentAlbum._id) {
+        loadAlbumWithMedia(currentAlbum._id);
+      }
+    }
+  }, [isOpen, loadedAlbums, currentAlbumIndex, loadAlbumWithMedia]);
+  
   // Get the current album
-  const currentAlbum = albums[currentAlbumIndex] || null;
+  const currentAlbum = loadedAlbums[currentAlbumIndex] || null;
   
   // Get the current media item (when in media view)
-  const currentMedia = currentAlbum?.media?.[currentMediaIndex] || null;
+  const currentMedia = mediaItems[currentMediaIndex] || null;
   
   // Calculate total counts
-  const totalAlbums = albums.length;
-  const totalMediaInCurrentAlbum = currentAlbum?.media?.length || 0;
+  const totalAlbums = loadedAlbums.length;
+  const totalMediaInCurrentAlbum = mediaItems.length;
   
   // Navigation callbacks
   const nextAlbum = useCallback(() => {
@@ -115,25 +173,84 @@ const AlbumView = ({
     setViewMode('media');
   };
   
+  // Function to set an image as album cover
+  const setAsCover = async (mediaId) => {
+    if (!currentAlbum || !currentAlbum._id) return;
+    
+    try {
+      await AlbumAPI.updateAlbum(currentAlbum._id, {
+        coverImageId: mediaId
+      });
+      
+      // Update local state
+      setLoadedAlbums(prev => {
+        const updated = [...prev];
+        const index = updated.findIndex(a => a._id === currentAlbum._id);
+        if (index !== -1) {
+          updated[index] = {
+            ...updated[index],
+            coverImageId: mediaId
+          };
+        }
+        return updated;
+      });
+      
+      // If callback provided, notify parent
+      if (onAlbumUpdated) {
+        onAlbumUpdated();
+      }
+    } catch (error) {
+      console.error('Failed to set cover image:', error);
+    }
+  };
+  
   // If the overlay is not open or there are no albums, don't render anything
-  if (!isOpen || !albums || albums.length === 0) {
+  if (!isOpen || !loadedAlbums || loadedAlbums.length === 0) {
     return null;
   }
   
   // Helper function to get album cover image
   const getAlbumCoverImage = (album) => {
-    if (!album || !album.media || album.media.length === 0) {
-      return getFallbackImageUrl();
+    if (!album) return getFallbackImageUrl();
+    
+    // Use coverImage from album if it already includes the image object
+    if (album.coverImage) {
+      return getImageUrl(album.coverImage.content);
     }
     
-    // Find the first photo in the album
-    const firstPhoto = album.media.find(item => item.type === 'photo');
-    if (firstPhoto) {
-      return getImageUrl(firstPhoto.content);
+    // For albums loaded with getAlbumById, find the media item by coverImageId
+    if (album.coverImageId && album === currentAlbum && mediaItems.length > 0) {
+      const coverItem = mediaItems.find(item => item._id === album.coverImageId);
+      if (coverItem && coverItem.type === 'photo') {
+        return getImageUrl(coverItem.content);
+      }
+    }
+    
+    // Find the first photo in mediaItems if this is the current album
+    if (album === currentAlbum && mediaItems.length > 0) {
+      const firstPhoto = mediaItems.find(item => item.type === 'photo');
+      if (firstPhoto) {
+        return getImageUrl(firstPhoto.content);
+      }
+    }
+    
+    // Find the first photo in album.mediaItems if available
+    if (album.mediaItems && album.mediaItems.length > 0) {
+      const firstPhoto = album.mediaItems.find(item => item.type === 'photo');
+      if (firstPhoto) {
+        return getImageUrl(firstPhoto.content);
+      }
     }
     
     return getFallbackImageUrl();
   };
+  
+  // Count photos and notes in current media items
+  const photoCount = mediaItems.filter(item => item.type === 'photo').length;
+  const noteCount = mediaItems.filter(item => item.type === 'note').length;
+  
+  // Determine if this is a photo or note
+  const isPhoto = currentMedia && currentMedia.type === 'photo';
   
   return (
     <div 
@@ -220,12 +337,20 @@ const AlbumView = ({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="max-w-6xl mx-auto">
-            {totalAlbums > 0 && (
+            {isLoading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+              </div>
+            ) : error ? (
+              <div className="bg-red-600 text-white p-4 rounded">
+                {error}
+              </div>
+            ) : totalAlbums > 0 && (
               <>
                 {/* Current Album Display */}
                 <div className="mb-8">
-                  <div className="flex items-center mb-4">
-                    <h3 className="text-white text-lg font-medium flex-grow">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white text-lg font-medium">
                       {currentAlbum?.name || 'Album'}
                     </h3>
                     <div className="text-gray-400 text-sm">
@@ -254,7 +379,7 @@ const AlbumView = ({
                             <p className="text-sm mt-1">{currentAlbum.description}</p>
                           )}
                           <div className="text-sm text-gray-300 mt-1">
-                            {currentAlbum.media?.length || 0} media items
+                            {photoCount} photos, {noteCount} notes
                           </div>
                         </div>
                       )}
@@ -291,41 +416,107 @@ const AlbumView = ({
                     </div>
                   </div>
                   
-                  {/* Album Media Grid */}
-                  {currentAlbum?.media && currentAlbum.media.length > 0 ? (
-                    <div className="mt-6 grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {currentAlbum.media.map((media, idx) => (
-                        <div 
-                          key={idx}
-                          className="cursor-pointer group"
-                          onClick={() => enterMediaView(idx)}
+                  {/* Media Type Filter */}
+                  {(photoCount > 0 || noteCount > 0) && (
+                    <div className="flex space-x-2 mt-4 mb-2">
+                      <button 
+                        className="px-3 py-1 rounded text-sm bg-white text-gray-900"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        All ({mediaItems.length})
+                      </button>
+                      {photoCount > 0 && (
+                        <button 
+                          className="px-3 py-1 rounded text-sm bg-gray-800 text-white hover:bg-gray-700"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {media.type === 'photo' ? (
-                            <div className="aspect-square bg-gray-800 rounded-lg overflow-hidden relative">
-                              <img
-                                src={getImageUrl(media.content)}
-                                alt={media.caption || `Photo ${idx + 1}`}
-                                className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                onError={(e) => {
-                                  e.target.src = getFallbackImageUrl();
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="aspect-square bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center p-3 text-white group-hover:bg-gray-700 transition-colors">
-                              <div className="text-sm overflow-hidden max-h-full line-clamp-6">
-                                {media.content}
+                          Photos ({photoCount})
+                        </button>
+                      )}
+                      {noteCount > 0 && (
+                        <button 
+                          className="px-3 py-1 rounded text-sm bg-gray-800 text-white hover:bg-gray-700"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Notes ({noteCount})
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Album Media Grid */}
+                  {mediaItems.length > 0 ? (
+                    <div className="mt-2 grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {mediaItems.map((media, idx) => {
+                        if (media.type === 'photo') {
+                          return (
+                            <div 
+                              key={media._id || idx}
+                              className="cursor-pointer group relative"
+                              onClick={() => enterMediaView(idx)}
+                            >
+                              <div className="aspect-square bg-gray-800 rounded-lg overflow-hidden">
+                                <img
+                                  src={getImageUrl(media.content)}
+                                  alt={media.caption || `Photo ${idx + 1}`}
+                                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                  onError={(e) => {
+                                    e.target.src = getFallbackImageUrl();
+                                  }}
+                                />
                               </div>
+                              
+                              {/* Caption and set as cover button */}
+                              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex justify-between items-center">
+                                  <span className="truncate">
+                                    {media.caption || `Photo ${idx + 1}`}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAsCover(media._id);
+                                    }}
+                                    className="bg-blue-600 text-white text-xs rounded px-1"
+                                    title="Set as album cover"
+                                  >
+                                    Cover
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              {/* Cover indicator */}
+                              {currentAlbum.coverImageId === media._id && (
+                                <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs rounded px-1">
+                                  Cover
+                                </div>
+                              )}
                             </div>
-                          )}
-                          
-                          {media.caption && (
-                            <div className="mt-1 text-gray-300 text-sm truncate">
-                              {media.caption}
+                          );
+                        } else {
+                          // For notes, show a thumbnail representation
+                          return (
+                            <div 
+                              key={media._id || idx}
+                              className="cursor-pointer group"
+                              onClick={() => enterMediaView(idx)}
+                            >
+                              <div className="aspect-square bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center p-3 text-white group-hover:bg-gray-700 transition-colors">
+                                <div className="text-sm overflow-hidden max-h-full line-clamp-6">
+                                  {media.content.substring(0, 100)}
+                                  {media.content.length > 100 ? '...' : ''}
+                                </div>
+                              </div>
+                              
+                              {media.caption && (
+                                <div className="mt-1 text-gray-300 text-sm truncate">
+                                  {media.caption}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ))}
+                          );
+                        }
+                      })}
                     </div>
                   ) : (
                     <div className="mt-6 bg-gray-800 rounded-lg p-8 text-center text-gray-400">
@@ -339,7 +530,7 @@ const AlbumView = ({
                   <div className="mt-8">
                     <h4 className="text-white text-md font-medium mb-4">Other Albums</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {albums.map((album, idx) => (
+                      {loadedAlbums.map((album, idx) => (
                         idx !== currentAlbumIndex && (
                           <div
                             key={album._id || idx}
@@ -358,7 +549,7 @@ const AlbumView = ({
                             </div>
                             <h5 className="text-white text-sm mt-1">{album.name}</h5>
                             <div className="text-xs text-gray-400">
-                              {album.media?.length || 0} items
+                              {album.totalItems || album.mediaItems?.length || 0} items
                             </div>
                           </div>
                         )
@@ -433,18 +624,59 @@ const AlbumView = ({
             <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
               {currentMediaIndex + 1} / {totalMediaInCurrentAlbum}
             </div>
+            
+            {/* Set as cover button for photos */}
+            {isPhoto && (
+              <div className="absolute top-2 left-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAsCover(currentMedia._id);
+                  }}
+                  className="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700"
+                  title="Set as album cover"
+                >
+                  Set as Cover
+                </button>
+              </div>
+            )}
           </div>
           
           {/* Thumbnails */}
           {totalMediaInCurrentAlbum > 1 && (
             <div className="mt-4 flex gap-2 overflow-x-auto pb-2 max-w-5xl">
-              {currentAlbum?.media.map((item, index) => {
-                // Skip notes in the thumbnail view
-                if (item.type !== 'photo') return null;
+              {mediaItems.map((item, index) => {
+                // For photos, show image thumbnails
+                if (item.type === 'photo') {
+                  return (
+                    <div 
+                      key={item._id || index}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentMediaIndex(index);
+                      }}
+                      className={`cursor-pointer flex-shrink-0 transition-opacity ${
+                        currentMediaIndex === index 
+                          ? 'ring-2 ring-indigo-500 opacity-100' 
+                          : 'opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img 
+                        src={getImageUrl(item.content)}
+                        alt={item.caption || `Thumbnail ${index + 1}`} 
+                        className="h-20 w-20 object-cover rounded"
+                        onError={(e) => {
+                          e.target.src = getFallbackImageUrl();
+                        }}
+                      />
+                    </div>
+                  );
+                }
                 
+                // For notes, show a text thumbnail
                 return (
                   <div 
-                    key={index}
+                    key={item._id || index}
                     onClick={(e) => {
                       e.stopPropagation();
                       setCurrentMediaIndex(index);
@@ -455,14 +687,9 @@ const AlbumView = ({
                         : 'opacity-70 hover:opacity-100'
                     }`}
                   >
-                    <img 
-                      src={getImageUrl(item.content)}
-                      alt={item.caption || `Thumbnail ${index + 1}`} 
-                      className="h-20 w-20 object-cover rounded"
-                      onError={(e) => {
-                        e.target.src = getFallbackImageUrl();
-                      }}
-                    />
+                    <div className="h-20 w-20 bg-gray-700 rounded flex items-center justify-center text-xs text-white p-1 overflow-hidden">
+                      {item.caption || item.content.substring(0, 30)}
+                    </div>
                   </div>
                 );
               })}
@@ -475,13 +702,13 @@ const AlbumView = ({
       <div className="bg-gray-900 text-white py-2 px-4 text-xs flex justify-between items-center">
         <div>
           {viewMode === 'media' && currentMedia?.dateCreated && (
-            <span>Taken: {new Date(currentMedia.dateCreated).toLocaleString()}</span>
+            <span>Created: {new Date(currentMedia.dateCreated).toLocaleString()}</span>
           )}
         </div>
         <div>
           {viewMode === 'album' 
-            ? "← → to navigate albums, ESC to close, i to toggle info" 
-            : "← → to navigate media, ESC to go back, i to toggle info"}
+            ? "← → to navigate albums, Enter to view media, ESC to close" 
+            : "← → to navigate media, ESC to go back to albums"}
         </div>
       </div>
     </div>
@@ -496,19 +723,15 @@ AlbumView.propTypes = {
       _id: PropTypes.string.isRequired,
       name: PropTypes.string.isRequired,
       description: PropTypes.string,
-      media: PropTypes.arrayOf(
-        PropTypes.shape({
-          type: PropTypes.string.isRequired,
-          content: PropTypes.string.isRequired,
-          caption: PropTypes.string,
-          dateCreated: PropTypes.string
-        })
-      )
+      coverImage: PropTypes.object,
+      mediaItems: PropTypes.array,
+      coverImageId: PropTypes.string
     })
   ),
   selectedAlbumId: PropTypes.string,
   title: PropTypes.string,
-  description: PropTypes.string
+  description: PropTypes.string,
+  onAlbumUpdated: PropTypes.func
 };
 
 export default AlbumView;

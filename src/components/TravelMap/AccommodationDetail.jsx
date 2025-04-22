@@ -2,39 +2,26 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
-import MediaAPI from "../../services/mediaApi";
 import AlbumAPI from "../../services/albumApi";
 import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 import AlbumManager from "./AlbumManager";
 import AlbumView from "./AlbumView";
 
 /**
- * Enhanced AccommodationDetail component with albums support
- * Fixed to properly update when switching between different accommodations
- * Fixed to prevent duplicate album creations
- * Added mouse wheel event handling to prevent map scrolling
+ * Enhanced AccommodationDetail component for album-centric architecture
  */
-const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
-  const [activeTab, setActiveTab] = useState('details');
-  const detailContainerRef = useRef(null); // Ref for the container element
+const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId, openAlbum }) => {
+  // Default to albums tab
+  const [activeTab, setActiveTab] = useState('albums');
+  const detailContainerRef = useRef(null);
   
-  // Local state for media and albums
-  const [mediaList, setMediaList] = useState([]);
+  // Album state
   const [albums, setAlbums] = useState([]);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   
   // Album view state
   const [albumViewOpen, setAlbumViewOpen] = useState(false);
   const [selectedAlbumId, setSelectedAlbumId] = useState(null);
-  
-  // Media upload form state
-  const [mediaType, setMediaType] = useState('photo');
-  const [caption, setCaption] = useState('');
-  const [content, setContent] = useState('');
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState('');
-  const [uploadMessage, setUploadMessage] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
   
   // Extract item ID for API calls
   const getItemId = useCallback(() => {
@@ -55,24 +42,19 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
       const albumData = await AlbumAPI.getAlbumsByItem(tripId, 'stay', itemId);
       console.log(`Loaded ${albumData.length} albums for stay ${itemId}`);
       setAlbums(albumData);
+      
+      // If we have albums but none selected, select the first one
+      if (albumData.length > 0 && !selectedAlbumId) {
+        setSelectedAlbumId(albumData[0]._id);
+      }
     } catch (error) {
       console.error('Failed to load albums:', error);
     } finally {
       setIsLoadingAlbums(false);
     }
-  }, [tripId, accommodation, getItemId]);
+  }, [tripId, accommodation, getItemId, selectedAlbumId]);
   
-  // Update media list when accommodation changes
-  useEffect(() => {
-    if (accommodation && accommodation.media) {
-      console.log(`Updating media list for ${accommodation.location}, found ${accommodation.media.length} items`);
-      setMediaList(accommodation.media || []);
-    } else {
-      setMediaList([]);
-    }
-  }, [accommodation]);
-  
-  // Load albums when accommodation changes
+  // Load albums when the component mounts or when dependencies change
   useEffect(() => {
     if (tripId && accommodation) {
       loadAlbums();
@@ -81,7 +63,6 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
   
   // Improved mouse wheel event handling to prevent scrolling map
   useEffect(() => {
-    // Use the ref directly instead of querySelector
     const detailContainer = detailContainerRef.current;
     
     if (!detailContainer) {
@@ -119,7 +100,7 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
     // Add event listener with capture phase to ensure it gets the event first
     detailContainer.addEventListener('wheel', preventWheelPropagation, { 
       passive: false,
-      capture: true  // This is important to capture the event before it reaches other handlers
+      capture: true
     });
     
     // Clean up function
@@ -136,140 +117,10 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
   
   if (!accommodation) return null;
   
-  // Handle form submission - updated to use MediaAPI
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsUploading(true);
-    setUploadMessage('');
-    
-    try {
-      let newMedia = {
-        type: mediaType,
-        caption: caption,
-        dateCreated: new Date().toISOString()
-      };
-      
-      if (mediaType === 'photo') {
-        if (!photoFile) {
-          setUploadMessage('Please select a photo');
-          setIsUploading(false);
-          return;
-        }
-        
-        // Upload the photo first using MediaAPI
-        try {
-          const uploadResult = await MediaAPI.uploadPhoto(photoFile);
-          newMedia.content = uploadResult.url; // Use the URL returned from the server
-          console.log('Photo uploaded successfully:', uploadResult);
-        } catch (uploadError) {
-          console.error('Upload error:', uploadError);
-          
-          // Fallback for development: create a path like we did before
-          const fileName = photoFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-          const relativePath = `/uploads/stays/${getItemId()}/${fileName}`;
-          newMedia.content = relativePath;
-          
-          console.log(`UPLOAD: To test, manually copy the selected file to: public${relativePath}`);
-          setUploadMessage(`Using test path since backend call failed. Copy your photo to: public${relativePath}`);
-        }
-        
-      } else {
-        // For notes, just store the content directly
-        if (!content.trim()) {
-          setUploadMessage('Please enter some note content');
-          setIsUploading(false);
-          return;
-        }
-        newMedia.content = content;
-      }
-      
-      // Try to save the media to the backend using MediaAPI
-      let savedMedia = newMedia;
-      
-      try {
-        // Only attempt API call if we have valid IDs
-        if (tripId) {
-          const mediaResult = await MediaAPI.addMediaToStay(tripId, getItemId(), newMedia);
-          savedMedia = mediaResult.media || newMedia;
-          console.log('Media saved to backend:', mediaResult);
-        } else {
-          console.warn('Missing tripId, skipping backend save');
-        }
-      } catch (apiError) {
-        console.error('API error when saving media:', apiError);
-      }
-      
-      // Add to local state
-      const updatedMedia = [...mediaList, savedMedia];
-      setMediaList(updatedMedia);
-      
-      // Important: Update the parent component's state
-      if (onUpdate) {
-        // Create an updated accommodation object
-        const updatedAccommodation = {
-          ...accommodation,
-          media: updatedMedia
-        };
-        onUpdate(updatedAccommodation);
-      }
-      
-      // Set success message
-      setUploadMessage(`${mediaType === 'photo' ? 'Photo' : 'Note'} added successfully!`);
-      
-      // Clear form
-      setCaption('');
-      setContent('');
-      setPhotoFile(null);
-      setPhotoPreview('');
-      
-    } catch (error) {
-      console.error('Error adding media:', error);
-      setUploadMessage(`Error: ${error.message}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-  
-  // Handle photo file selection
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setPhotoFile(file);
-      
-      // Preview the image
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
-  // Handle album creation - THIS FUNCTION NOW MAKES THE API CALL
-  const handleAlbumCreated = async (albumData) => {
-    try {
-      console.log('Creating album with data:', albumData);
-      
-      // Make sure the album has the correct itemId
-      const albumToCreate = {
-        ...albumData,
-        itemType: 'stay',
-        itemId: getItemId()
-      };
-      
-      // Actually save the album to the backend
-      const savedAlbum = await AlbumAPI.createAlbum(albumToCreate);
-      
-      console.log('Album saved to backend:', savedAlbum);
-      
-      // Update local albums state
-      setAlbums(prevAlbums => [...prevAlbums, savedAlbum]);
-      
-      return savedAlbum;
-    } catch (error) {
-      console.error('Error creating album:', error);
-      throw error;
-    }
+  // Handle album creation
+  const handleAlbumCreated = async (createdAlbum) => {
+    loadAlbums();
+    return createdAlbum;
   };
   
   // Handle album selection for viewing
@@ -277,15 +128,30 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
     setSelectedAlbumId(album._id);
     setAlbumViewOpen(true);
   };
+  
+  // Handle refresh after media operations
+  const handleRefreshNeeded = () => {
+    loadAlbums();
+    
+    // If onUpdate exists, notify parent that data may have changed
+    if (onUpdate) {
+      onUpdate(accommodation);
+    }
+  };
+  
+  // Handle View All Albums button click
+  const handleViewAllAlbums = () => {
+    setAlbumViewOpen(true);
+  };
 
   return (
     <>
       <div 
-        ref={detailContainerRef} // Add the ref here
+        ref={detailContainerRef}
         style={{
           ...segmentDetailStyles.container,
           borderLeft: "4px solid #8800ff",
-          width: "360px", // Wider to accommodate form and albums
+          width: "360px",
           maxHeight: "450px",
           overflowY: "auto"
         }}
@@ -345,21 +211,6 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
               Details
             </button>
             <button
-              onClick={() => setActiveTab('media')}
-              className={`py-2 px-3 text-sm font-medium ${
-                activeTab === 'media'
-                  ? 'border-b-2 border-purple-500 text-purple-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Media
-              {mediaList.length > 0 && (
-                <span className="ml-1 text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded-full">
-                  {mediaList.length}
-                </span>
-              )}
-            </button>
-            <button
               onClick={() => setActiveTab('albums')}
               className={`py-2 px-3 text-sm font-medium ${
                 activeTab === 'albums'
@@ -373,16 +224,6 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
                   {albums.length}
                 </span>
               )}
-            </button>
-            <button
-              onClick={() => setActiveTab('upload')}
-              className={`py-2 px-3 text-sm font-medium ${
-                activeTab === 'upload'
-                  ? 'border-b-2 border-purple-500 text-purple-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Upload
             </button>
           </nav>
         </div>
@@ -408,58 +249,47 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
                 <strong>Amenities:</strong> {accommodation.amenities.join(', ')}
               </div>
             )}
-          </div>
-        )}
-        
-        {/* Media Tab Content */}
-        {activeTab === 'media' && (
-          <div className="p-2">
-            {mediaList.length > 0 ? (
-              <div>
-                <h4 className="font-medium mb-2">Media Items ({mediaList.length}):</h4>
-                <div className="space-y-3">
-                  {mediaList.map((media, index) => (
-                    <div key={index} className="border rounded p-2">
-                      <div className="font-medium">{media.type === 'photo' ? '📷 Photo' : '📝 Note'}</div>
-                      {media.caption && (
-                        <div className="text-sm font-medium mt-1">{media.caption}</div>
-                      )}
-                      
-                      {media.type === 'photo' ? (
-                        <div className="mt-1">
-                          <img 
-                            src={getImageUrl(media.content)}
-                            alt={media.caption || 'Photo'} 
-                            className="max-h-32 object-contain cursor-pointer"
-                            onClick={() => setAlbumViewOpen(true)}
+            
+            {/* Quick album preview if we have albums */}
+            {albums.length > 0 && (
+              <div className="mt-4 border-t pt-3">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-medium text-sm">Photo Albums</h4>
+                  <button 
+                    className="text-purple-500 text-xs"
+                    onClick={handleViewAllAlbums}
+                  >
+                    View All
+                  </button>
+                </div>
+                
+                <div className="flex overflow-x-auto space-x-2 pb-2">
+                  {albums.map((album) => (
+                    <div 
+                      key={album._id}
+                      className="flex-shrink-0 w-16 cursor-pointer"
+                      onClick={() => handleAlbumSelected(album)}
+                    >
+                      <div className="aspect-square bg-gray-100 rounded overflow-hidden">
+                        {album.coverImage ? (
+                          <img
+                            src={getImageUrl(album.coverImage.content)}
+                            alt={album.name}
+                            className="w-full h-full object-cover"
                             onError={(e) => {
-                              console.error("Failed to load image:", media.content);
                               e.target.src = getFallbackImageUrl();
-                              e.target.style.backgroundColor = '#f0f0f0';
                             }}
                           />
-                          <div className="text-xs text-gray-500 mt-1">
-                            Path: {media.content}
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                            No cover
                           </div>
-                        </div>
-                      ) : (
-                        <div className="mt-1 text-sm bg-gray-50 p-2 rounded">
-                          {media.content}
-                        </div>
-                      )}
-                      
-                      {media.dateCreated && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {new Date(media.dateCreated).toLocaleString()}
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <div className="text-xs truncate mt-1">{album.name}</div>
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-4 text-gray-500">
-                No media items available. Add some in the Upload tab.
               </div>
             )}
           </div>
@@ -477,123 +307,13 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
                 tripId={tripId}
                 itemType="stay"
                 itemId={getItemId()}
-                media={mediaList}
                 albums={albums}
                 onAlbumCreated={handleAlbumCreated}
                 onAlbumSelected={handleAlbumSelected}
+                onRefreshNeeded={handleRefreshNeeded}
+                defaultOpen={albums.length === 0}
               />
             )}
-          </div>
-        )}
-        
-        {/* Upload Tab Content */}
-        {activeTab === 'upload' && (
-          <div className="p-2">
-            {uploadMessage && (
-              <div className={`mb-3 p-2 rounded text-sm ${
-                uploadMessage.startsWith('Error') 
-                  ? 'bg-red-100 text-red-700' 
-                  : 'bg-green-100 text-green-700'
-              }`}>
-                {uploadMessage}
-              </div>
-            )}
-            
-            <form onSubmit={handleSubmit}>
-              {/* Media Type Selection */}
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Media Type
-                </label>
-                <div className="flex space-x-4">
-                  <label className="inline-flex items-center">
-                    <input
-                      type="radio"
-                      className="form-radio"
-                      name="mediaType"
-                      value="photo"
-                      checked={mediaType === 'photo'}
-                      onChange={() => setMediaType('photo')}
-                    />
-                    <span className="ml-2">Photo</span>
-                  </label>
-                  <label className="inline-flex items-center">
-                    <input
-                      type="radio"
-                      className="form-radio"
-                      name="mediaType"
-                      value="note"
-                      checked={mediaType === 'note'}
-                      onChange={() => setMediaType('note')}
-                    />
-                    <span className="ml-2">Note</span>
-                  </label>
-                </div>
-              </div>
-              
-              {/* Caption */}
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Caption
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Enter a caption (optional)"
-                />
-              </div>
-              
-              {/* Content - conditionally show based on media type */}
-              {mediaType === 'photo' ? (
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Upload Photo
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="w-full"
-                    onChange={handleFileChange}
-                  />
-                  {photoPreview && (
-                    <div className="mt-2">
-                      <img 
-                        src={photoPreview} 
-                        alt="Preview" 
-                        className="h-32 object-contain"
-                      />
-                    </div>
-                  )}
-                  <div className="mt-1 text-xs text-gray-500">
-                    Photos will be uploaded to the server and saved with this accommodation.
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Note Content
-                  </label>
-                  <textarea
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    rows="4"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="Write your note here..."
-                  ></textarea>
-                </div>
-              )}
-              
-              {/* Submit Button */}
-              <button
-                type="submit"
-                className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-                disabled={isUploading}
-              >
-                {isUploading ? 'Uploading...' : 'Add Media'}
-              </button>
-            </form>
           </div>
         )}
       </div>
@@ -614,25 +334,19 @@ const AccommodationDetail = ({ accommodation, onClose, onUpdate, tripId }) => {
 AccommodationDetail.propTypes = {
   accommodation: PropTypes.shape({
     id: PropTypes.string,
-    _id: PropTypes.string, // MongoDB ID from the backend
+    _id: PropTypes.string,
     location: PropTypes.string.isRequired,
     dateStart: PropTypes.string.isRequired,
     dateEnd: PropTypes.string.isRequired,
     notes: PropTypes.string,
     coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
     amenities: PropTypes.arrayOf(PropTypes.string),
-    media: PropTypes.arrayOf(
-      PropTypes.shape({
-        type: PropTypes.string.isRequired,
-        content: PropTypes.string.isRequired,
-        caption: PropTypes.string,
-        dateCreated: PropTypes.string
-      })
-    )
+    defaultAlbumId: PropTypes.string
   }),
   onClose: PropTypes.func.isRequired,
   onUpdate: PropTypes.func,
-  tripId: PropTypes.string
+  tripId: PropTypes.string,
+  openAlbum: PropTypes.func
 };
 
 export default AccommodationDetail;

@@ -1,146 +1,183 @@
 /**
- * API service for media operations (photos, notes, etc.)
+ * API service for media operations - Updated for album-centric architecture
  */
 const MediaAPI = {
-    // Base URL for API endpoints
-    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
-    
-    /**
-     * Upload a photo file
-     * @param {File} photoFile - The file object to upload
-     * @returns {Promise<Object>} Object containing URL of the uploaded file
-     */
-    async uploadPhoto(photoFile) {
-      try {
-        // Create form data
-        const formData = new FormData();
-        formData.append('photo', photoFile);
-        
-        const response = await fetch(`${this.baseURL}/api/media/upload`, {
-          method: 'POST',
-          body: formData,
-          // Don't set Content-Type header here - browser will add it with boundary
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Error: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error('Failed to upload photo:', error);
-        throw error;
-      }
-    },
-    
-    /**
-     * Add media to a segment
-     * @param {string} tripId - The ID of the trip
-     * @param {string} segmentId - The ID of the segment
-     * @param {Object} mediaData - Media data object (type, content, caption)
-     * @returns {Promise<Object>} Added media object
-     */
-    async addMediaToSegment(tripId, segmentId, mediaData) {
-      try {
-        const response = await fetch(`${this.baseURL}/api/media/segment/${tripId}/${segmentId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(mediaData),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Error: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error(`Failed to add media to segment ${segmentId}:`, error);
-        throw error;
-      }
-    },
-    
-    /**
-     * Add media to a stay
-     * @param {string} tripId - The ID of the trip
-     * @param {string} stayId - The ID of the stay
-     * @param {Object} mediaData - Media data object (type, content, caption)
-     * @returns {Promise<Object>} Added media object
-     */
-    async addMediaToStay(tripId, stayId, mediaData) {
-      try {
-        const response = await fetch(`${this.baseURL}/api/media/stay/${tripId}/${stayId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(mediaData),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Error: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error(`Failed to add media to stay ${stayId}:`, error);
-        throw error;
-      }
-    },
-    
-    /**
-     * Delete media from a segment
-     * @param {string} tripId - The ID of the trip
-     * @param {string} segmentId - The ID of the segment
-     * @param {string} mediaId - The ID of the media
-     * @returns {Promise<Object>} Response object
-     */
-    async deleteMediaFromSegment(tripId, segmentId, mediaId) {
-      try {
-        const response = await fetch(`${this.baseURL}/api/media/segment/${tripId}/${segmentId}/${mediaId}`, {
-          method: 'DELETE',
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Error: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error(`Failed to delete media ${mediaId} from segment ${segmentId}:`, error);
-        throw error;
-      }
-    },
-    
-    /**
-     * Delete media from a stay
-     * @param {string} tripId - The ID of the trip
-     * @param {string} stayId - The ID of the stay
-     * @param {string} mediaId - The ID of the media
-     * @returns {Promise<Object>} Response object
-     */
-    async deleteMediaFromStay(tripId, stayId, mediaId) {
-      try {
-        const response = await fetch(`${this.baseURL}/api/media/stay/${tripId}/${stayId}/${mediaId}`, {
-          method: 'DELETE',
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `Error: ${response.status}`);
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error(`Failed to delete media ${mediaId} from stay ${stayId}:`, error);
-        throw error;
-      }
-    }
-  };
+  // Base URL for API endpoints
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
   
-  export default MediaAPI;
+  /**
+   * Upload a photo file
+   * @param {File} photoFile - The file object to upload
+   * @returns {Promise<Object>} Object containing URL of the uploaded file
+   */
+  async uploadPhoto(photoFile) {
+    try {
+      // Create form data
+      const formData = new FormData();
+      formData.append('photo', photoFile);
+      
+      const response = await fetch(`${this.baseURL}/api/media/upload`, {
+        method: 'POST',
+        body: formData,
+        // Don't set Content-Type header here - browser will add it with boundary
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to upload photo:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get all media items for an album
+   * @param {string} albumId - The ID of the album
+   * @returns {Promise<Array>} Array of media items
+   */
+  async getMediaByAlbum(albumId) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/album/${albumId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to fetch media for album ${albumId}:`, error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Add media to an album
+   * @param {string} albumId - The ID of the album
+   * @param {Object} mediaData - Media data object (type, content, caption)
+   * @returns {Promise<Object>} Added media object
+   */
+  async addMediaToAlbum(albumId, mediaData) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/album/${albumId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mediaData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to add media to album ${albumId}:`, error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get a single media item
+   * @param {string} mediaId - The ID of the media item
+   * @returns {Promise<Object>} Media item object
+   */
+  async getMediaItem(mediaId) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/${mediaId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to fetch media item ${mediaId}:`, error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Update a media item
+   * @param {string} mediaId - The ID of the media item
+   * @param {Object} mediaData - Updated media data
+   * @returns {Promise<Object>} Updated media object
+   */
+  async updateMediaItem(mediaId, mediaData) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/${mediaId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mediaData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to update media item ${mediaId}:`, error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Delete a media item
+   * @param {string} mediaId - The ID of the media item to delete
+   * @returns {Promise<Object>} Response object
+   */
+  async deleteMediaItem(mediaId) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/${mediaId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to delete media item ${mediaId}:`, error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Move a media item to another album
+   * @param {string} mediaId - The ID of the media item
+   * @param {string} targetAlbumId - The ID of the target album
+   * @returns {Promise<Object>} Response object
+   */
+  async moveMediaItem(mediaId, targetAlbumId) {
+    try {
+      const response = await fetch(`${this.baseURL}/api/media/${mediaId}/move/${targetAlbumId}`, {
+        method: 'PUT',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to move media item ${mediaId}:`, error);
+      throw error;
+    }
+  }
+};
+
+export default MediaAPI;

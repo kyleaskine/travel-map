@@ -172,6 +172,43 @@ const AlbumOverlay = ({
         </div>
       </div>
       
+      {/* Navigation controls - displayed outside of content for notes */}
+      {!isPhoto && filteredMediaItems.length > 1 && (
+        <div className="flex justify-between items-center px-4 py-2 bg-gray-800">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              prevImage();
+            }}
+            className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
+            aria-label="Previous note"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>Previous</span>
+          </button>
+          
+          <div className="text-gray-300 text-sm">
+            {selectedIndex + 1} / {filteredMediaItems.length}
+          </div>
+          
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              nextImage();
+            }}
+            className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
+            aria-label="Next note"
+          >
+            <span>Next</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
+      
       {/* Main content area */}
       <div 
         className="flex-grow flex flex-col items-center justify-center p-4 relative"
@@ -199,8 +236,8 @@ const AlbumOverlay = ({
                 </div>
               )}
 
-              {/* Navigation arrows */}
-              {filteredMediaItems.length > 1 && (
+              {/* Navigation arrows - only for photos, not for notes */}
+              {isPhoto && filteredMediaItems.length > 1 && (
                 <>
                   <button
                     onClick={(e) => {
@@ -232,10 +269,12 @@ const AlbumOverlay = ({
                 </div>
               )}
               
-              {/* Counter */}
-              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
-                {selectedIndex + 1} / {filteredMediaItems.length}
-              </div>
+              {/* Counter - only for photos */}
+              {isPhoto && (
+                <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
+                  {selectedIndex + 1} / {filteredMediaItems.length}
+                </div>
+              )}
             </div>
             
             {/* Media thumbnails */}
@@ -304,7 +343,10 @@ const AlbumOverlay = ({
           )}
         </div>
         <div>
-          Press ← → to navigate, ESC to close, i to toggle info
+          {isPhoto ? 
+            "Press ← → to navigate, ESC to close, i to toggle info" :
+            "Press ESC to close, i to toggle info"
+          }
         </div>
       </div>
     </div>

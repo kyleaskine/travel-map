@@ -4,30 +4,24 @@ import { formatDate } from "../../utils/dateUtils";
 import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
- * TimelineStay component with integrated media preview
- * Fixed to properly handle media click events
+ * TimelineStay component - Updated for album-centric architecture
  */
 const TimelineStay = ({ 
   stay, 
+  albums = [], // Now takes albums instead of media
   isActive, 
   isFocused, 
   onClick, 
-  onViewMedia,
+  onViewAlbums, // Changed from onViewMedia
   id 
 }) => {
-  // Handle View Media click - Explicitly stop propagation to prevent parent click handler
-  const handleViewMedia = (e) => {
-    e.stopPropagation(); // This is crucial to stop the click event from reaching parent
-    if (onViewMedia && stay.media && stay.media.length > 0) {
-      onViewMedia(stay);
+  // Handle View Albums click - Explicitly stop propagation
+  const handleViewAlbums = (e) => {
+    e.stopPropagation();
+    if (onViewAlbums && albums && albums.length > 0) {
+      onViewAlbums(stay, albums);
     }
   };
-
-  // Debug logging to help troubleshoot media issues
-  console.log(`Rendering TimelineStay ${stay.id || stay.location}:`, {
-    hasMedia: stay.media && stay.media.length > 0,
-    mediaCount: stay.media ? stay.media.length : 0
-  });
 
   return (
     <div
@@ -121,17 +115,27 @@ const TimelineStay = ({
           </div>
         )}
         
-        {/* Media Indicator - only show if there's media */}
-        {stay.media && stay.media.length > 0 && (
+        {/* Album Indicator - only show if there are albums */}
+        {albums && albums.length > 0 && (
           <div 
             className="ml-5 mt-2"
-            data-testid={`media-indicator-${stay.id || stay.location.replace(/\s+/g, '-').toLowerCase()}`}
-            onClick={handleViewMedia}
+            data-testid={`album-indicator-${stay.id || stay.location.replace(/\s+/g, '-').toLowerCase()}`}
+            onClick={handleViewAlbums}
           >
             <TimelineMediaIndicator 
-              media={stay.media} 
-              onClick={handleViewMedia}
+              albums={albums} 
+              onClick={handleViewAlbums}
             />
+          </div>
+        )}
+        
+        {/* Default album indicator - show if there's a defaultAlbumId but no loaded albums yet */}
+        {(!albums || albums.length === 0) && stay.defaultAlbumId && (
+          <div className="ml-5 mt-2 flex items-center text-xs text-gray-500">
+            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm11 1H6v8l4-2 4 2V6z" clipRule="evenodd" />
+            </svg>
+            Has albums
           </div>
         )}
       </div>
@@ -142,30 +146,26 @@ const TimelineStay = ({
 TimelineStay.propTypes = {
   stay: PropTypes.shape({
     id: PropTypes.string,
+    _id: PropTypes.string,
     location: PropTypes.string.isRequired,
     dateStart: PropTypes.string.isRequired,
     dateEnd: PropTypes.string.isRequired,
     notes: PropTypes.string,
     coordinates: PropTypes.arrayOf(PropTypes.number).isRequired,
-    media: PropTypes.arrayOf(
-      PropTypes.shape({
-        type: PropTypes.string.isRequired,
-        content: PropTypes.string.isRequired,
-        caption: PropTypes.string,
-        dateCreated: PropTypes.string
-      })
-    )
+    defaultAlbumId: PropTypes.string
   }).isRequired,
+  albums: PropTypes.array, // Array of albums for this stay
   isActive: PropTypes.bool,
   isFocused: PropTypes.bool,
   onClick: PropTypes.func.isRequired,
-  onViewMedia: PropTypes.func,
+  onViewAlbums: PropTypes.func,
   id: PropTypes.string
 };
 
 TimelineStay.defaultProps = {
   isActive: false,
-  isFocused: false
+  isFocused: false,
+  albums: []
 };
 
 export default TimelineStay;

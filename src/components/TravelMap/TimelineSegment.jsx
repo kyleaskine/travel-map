@@ -5,31 +5,26 @@ import { formatDate } from "../../utils/dateUtils";
 import TimelineMediaIndicator from "./TimelineMediaIndicator";
 
 /**
- * TimelineSegment component with integrated media preview
- * Fixed to properly handle media click events
+ * TimelineSegment component - Updated for album-centric architecture
  */
 const TimelineSegment = ({ 
   segment, 
+  albums = [], // Now takes albums instead of media
   isActive, 
   isFocused, 
   onClick, 
-  onViewMedia,
+  onViewAlbums, // Changed from onViewMedia
   id 
 }) => {
   const MAX_NAME_LENGTH = 15;
   
-  // Handle View Media click - Explicitly stop propagation to prevent parent click handler
-  const handleViewMedia = (e) => {
-    e.stopPropagation(); // This is crucial to stop the click event from reaching parent
-    if (onViewMedia && segment.media && segment.media.length > 0) {
-      onViewMedia(segment);
+  // Handle View Albums click - Explicitly stop propagation
+  const handleViewAlbums = (e) => {
+    e.stopPropagation();
+    if (onViewAlbums && albums && albums.length > 0) {
+      onViewAlbums(segment, albums);
     }
   };
-
-  console.log(`Rendering TimelineSegment ${segment.id}:`, {
-    hasMedia: segment.media && segment.media.length > 0,
-    mediaCount: segment.media ? segment.media.length : 0
-  });
 
   return (
     <div
@@ -83,17 +78,27 @@ const TimelineSegment = ({
           {formatDate(segment.date)}
         </div>
         
-        {/* Media Indicator - only show if there's media */}
-        {segment.media && segment.media.length > 0 && (
+        {/* Album Indicator - only show if there are albums */}
+        {albums && albums.length > 0 && (
           <div 
             className="ml-5 mt-2" 
-            data-testid={`media-indicator-${segment.id}`}
-            onClick={handleViewMedia}
+            data-testid={`album-indicator-${segment.id}`}
+            onClick={handleViewAlbums}
           >
             <TimelineMediaIndicator 
-              media={segment.media} 
-              onClick={handleViewMedia}
+              albums={albums} 
+              onClick={handleViewAlbums}
             />
+          </div>
+        )}
+        
+        {/* Default album indicator - show if there's a defaultAlbumId but no loaded albums yet */}
+        {(!albums || albums.length === 0) && segment.defaultAlbumId && (
+          <div className="ml-5 mt-2 flex items-center text-xs text-gray-500">
+            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm11 1H6v8l4-2 4 2V6z" clipRule="evenodd" />
+            </svg>
+            Has albums
           </div>
         )}
       </div>
@@ -113,24 +118,19 @@ TimelineSegment.propTypes = {
     destination: PropTypes.shape({
       name: PropTypes.string.isRequired
     }).isRequired,
-    media: PropTypes.arrayOf(
-      PropTypes.shape({
-        type: PropTypes.string.isRequired,
-        content: PropTypes.string.isRequired,
-        caption: PropTypes.string,
-        dateCreated: PropTypes.string
-      })
-    )
+    defaultAlbumId: PropTypes.string
   }).isRequired,
+  albums: PropTypes.array, // Array of albums for this segment
   isActive: PropTypes.bool.isRequired,
   isFocused: PropTypes.bool,
   onClick: PropTypes.func.isRequired,
-  onViewMedia: PropTypes.func,
+  onViewAlbums: PropTypes.func,
   id: PropTypes.string
 };
 
 TimelineSegment.defaultProps = {
-  isFocused: false
+  isFocused: false,
+  albums: []
 };
 
 export default TimelineSegment;
