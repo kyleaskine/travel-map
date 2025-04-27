@@ -7,6 +7,7 @@ import MediaAPI from '../../services/mediaApi';
 /**
  * AlbumManager component for creating and managing media albums
  * Updated for album-centric architecture
+ * Remove delete functionality until database issues are fixed
  */
 const AlbumManager = ({ 
   tripId, 
@@ -308,28 +309,6 @@ const AlbumManager = ({
     }
   };
   
-  // Delete a media item
-  const handleDeleteMedia = async (mediaId) => {
-    if (!window.confirm('Are you sure you want to delete this media item?')) {
-      return;
-    }
-    
-    try {
-      await MediaAPI.deleteMediaItem(mediaId);
-      
-      // Update local state
-      setMediaItems(prev => prev.filter(item => item._id !== mediaId));
-      
-      // Notify parent that refresh might be needed
-      if (onRefreshNeeded) {
-        onRefreshNeeded();
-      }
-    } catch (error) {
-      console.error('Failed to delete media:', error);
-      setMessage(`Error: ${error.message || 'Failed to delete media'}`);
-    }
-  };
-  
   return (
     <div className="album-manager">
       {/* Message display */}
@@ -419,7 +398,7 @@ const AlbumManager = ({
               ) : mediaItems.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
                   {mediaItems.map((media) => (
-                    <div key={media._id} className="relative group">
+                    <div key={media._id} className="relative">
                       {media.type === 'photo' ? (
                         <div className="aspect-square overflow-hidden rounded border border-gray-200">
                           <img
@@ -442,21 +421,7 @@ const AlbumManager = ({
                         <div className="text-xs truncate mt-1">{media.caption}</div>
                       )}
                       
-                      {/* Overlay with delete button */}
-                      <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteMedia(media._id);
-                          }}
-                          className="bg-red-600 text-white rounded-full p-1"
-                          title="Delete"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
+                      {/* Delete button removed */}
                     </div>
                   ))}
                 </div>

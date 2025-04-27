@@ -26,6 +26,7 @@ const TimelinePanel = ({
   const [albumViewOpen, setAlbumViewOpen] = useState(false);
   const [currentViewItem, setCurrentViewItem] = useState(null);
   const [currentViewAlbums, setCurrentViewAlbums] = useState([]);
+  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
   const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   
   // Load albums for all items - wrapped in useCallback with proper dependencies
@@ -218,9 +219,35 @@ const TimelinePanel = ({
   }, []);
   
   // Handle view albums for a specific item
-  const handleViewAlbums = (item, albums) => {
+  const handleViewAlbums = async (item, albums) => {
+    console.log('Viewing albums for item:', item.id, 'Albums:', albums);
+    
+    // Make sure we have a complete album object with media items
     setCurrentViewItem(item);
     setCurrentViewAlbums(albums);
+    
+    // Pre-select the first album if available
+    if (albums && albums.length > 0) {
+      setSelectedAlbumId(albums[0]._id);
+      
+      // Pre-load album data to ensure we have media items
+      try {
+        const albumWithMedia = await AlbumAPI.getAlbumById(albums[0]._id);
+        if (albumWithMedia) {
+          // Update the albums array with the loaded album
+          const updatedAlbums = [...albums];
+          const index = updatedAlbums.findIndex(a => a._id === albumWithMedia._id);
+          if (index !== -1) {
+            updatedAlbums[index] = albumWithMedia;
+          }
+          setCurrentViewAlbums(updatedAlbums);
+        }
+      } catch (error) {
+        console.error('Failed to load album with media:', error);
+      }
+    }
+    
+    // Open the album view
     setAlbumViewOpen(true);
   };
   
@@ -334,6 +361,7 @@ const TimelinePanel = ({
           isOpen={albumViewOpen}
           onClose={() => setAlbumViewOpen(false)}
           albums={currentViewAlbums}
+          selectedAlbumId={selectedAlbumId}
           title={
             currentViewItem.itemType === 'segment' 
               ? `Albums for ${currentViewItem.transport}` 
