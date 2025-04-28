@@ -3,11 +3,12 @@ import PropTypes from 'prop-types';
 import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 import AlbumAPI from '../../services/albumApi';
 import MediaAPI from '../../services/mediaApi';
+// Import the new MediaUpload component
+import MediaUpload from './MediaUpload';
 
 /**
  * AlbumManager component for creating and managing media albums
- * Updated for album-centric architecture
- * Remove delete functionality until database issues are fixed
+ * Updated for album-centric architecture with external MediaUpload component
  */
 const AlbumManager = ({ 
   tripId, 
@@ -36,13 +37,6 @@ const AlbumManager = ({
   const [newAlbumDescription, setNewAlbumDescription] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Media upload form state
-  const [mediaType, setMediaType] = useState('photo');
-  const [caption, setCaption] = useState('');
-  const [content, setContent] = useState('');
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState('');
   
   // Load albums for this item
   const loadAlbums = useCallback(async () => {
@@ -187,95 +181,6 @@ const AlbumManager = ({
     }
   };
   
-  // Handle media upload form submission
-  const handleMediaUpload = async (e) => {
-    e.preventDefault();
-    
-    if (!selectedAlbumId) {
-      setMessage('Please select an album first');
-      return;
-    }
-    
-    setIsSubmitting(true);
-    setMessage('');
-    
-    try {
-      let newMedia = {
-        type: mediaType,
-        caption: caption,
-      };
-      
-      if (mediaType === 'photo') {
-        if (!photoFile) {
-          setMessage('Please select a photo');
-          setIsSubmitting(false);
-          return;
-        }
-        
-        // Upload the photo first
-        const uploadResult = await MediaAPI.uploadPhoto(photoFile);
-        newMedia.content = uploadResult.url;
-        console.log('Photo uploaded successfully:', uploadResult);
-      } else {
-        // For notes
-        if (!content.trim()) {
-          setMessage('Please enter some note content');
-          setIsSubmitting(false);
-          return;
-        }
-        newMedia.content = content;
-      }
-      
-      // Add the media to the album
-      const savedMedia = await MediaAPI.addMediaToAlbum(selectedAlbumId, newMedia);
-      console.log('Media added to album:', savedMedia);
-      
-      // Update local state
-      setMediaItems(prev => [...prev, savedMedia]);
-      
-      // Reset form
-      setCaption('');
-      setContent('');
-      setPhotoFile(null);
-      setPhotoPreview('');
-      
-      // Show success message
-      setMessage(`${mediaType === 'photo' ? 'Photo' : 'Note'} added successfully!`);
-      
-      // Close the upload form after a delay
-      setTimeout(() => {
-        setIsUploadingMedia(false);
-        setMessage('');
-        
-        // Notify parent that refresh might be needed
-        if (onRefreshNeeded) {
-          onRefreshNeeded();
-        }
-      }, 1500);
-      
-    } catch (error) {
-      console.error('Error adding media:', error);
-      setMessage(`Error: ${error.message || 'Failed to add media'}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  
-  // Handle photo file selection
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setPhotoFile(file);
-      
-      // Preview the image
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
   // Create default album if none exists
   const handleCreateDefaultAlbum = async () => {
     if (!tripId || !itemType || !itemId) {
@@ -307,6 +212,22 @@ const AlbumManager = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  // Handle media added from MediaUpload component
+  const handleMediaAdded = (media, albumId) => {
+    // Update the local state if the media was added to the currently selected album
+    if (albumId === selectedAlbumId) {
+      setMediaItems(prev => [...prev, media]);
+    }
+    
+    // Notify parent component
+    if (onRefreshNeeded) {
+      onRefreshNeeded();
+    }
+    
+    // Close the upload form
+    setIsUploadingMedia(false);
   };
   
   return (
@@ -420,8 +341,6 @@ const AlbumManager = ({
                       {media.caption && (
                         <div className="text-xs truncate mt-1">{media.caption}</div>
                       )}
-                      
-                      {/* Delete button removed */}
                     </div>
                   ))}
                 </div>
@@ -528,118 +447,16 @@ const AlbumManager = ({
         </div>
       )}
       
-      {/* Media Upload Form */}
-      {isUploadingMedia && selectedAlbumId && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-4">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="font-medium">
-              Add Media to "{albums.find(a => a._id === selectedAlbumId)?.name || 'Album'}"
-            </h3>
-            <button
-              className="text-gray-500 hover:text-gray-700"
-              onClick={() => setIsUploadingMedia(false)}
-              disabled={isSubmitting}
-              type="button"
-            >
-              Cancel
-            </button>
-          </div>
-          
-          <form onSubmit={handleMediaUpload}>
-            {/* Media Type Selection */}
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Media Type
-              </label>
-              <div className="flex space-x-4">
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    className="form-radio"
-                    name="mediaType"
-                    value="photo"
-                    checked={mediaType === 'photo'}
-                    onChange={() => setMediaType('photo')}
-                  />
-                  <span className="ml-2">Photo</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    className="form-radio"
-                    name="mediaType"
-                    value="note"
-                    checked={mediaType === 'note'}
-                    onChange={() => setMediaType('note')}
-                  />
-                  <span className="ml-2">Note</span>
-                </label>
-              </div>
-            </div>
-            
-            {/* Caption */}
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Caption
-              </label>
-              <input
-                type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Enter a caption (optional)"
-              />
-            </div>
-            
-            {/* Content - conditionally show based on media type */}
-            {mediaType === 'photo' ? (
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Upload Photo
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="w-full"
-                  onChange={handleFileChange}
-                />
-                {photoPreview && (
-                  <div className="mt-2">
-                    <img 
-                      src={photoPreview} 
-                      alt="Preview" 
-                      className="h-32 object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Note Content
-                </label>
-                <textarea
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  rows="4"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write your note here..."
-                ></textarea>
-              </div>
-            )}
-            
-            {/* Submit Button */}
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Adding...' : 'Add Media'}
-              </button>
-            </div>
-          </form>
-        </div>
+      {/* Media Upload Component */}
+      {isUploadingMedia && (
+        <MediaUpload
+          tripId={tripId}
+          itemType={itemType}
+          itemId={itemId}
+          initialAlbumId={selectedAlbumId}
+          onMediaAdded={handleMediaAdded}
+          onCancel={() => setIsUploadingMedia(false)}
+        />
       )}
     </div>
   );
