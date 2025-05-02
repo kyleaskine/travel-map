@@ -7,7 +7,7 @@ import ZoomableImage from "./ZoomableImage";
 
 /**
  * Enhanced AlbumView component for viewing album contents
- * Supports the new album-centric architecture
+ * Updated with navigation controls outside of the content area for photos and notes
  */
 const AlbumView = ({
   isOpen,
@@ -124,24 +124,23 @@ const AlbumView = ({
       });
 
       // Update loaded albums with the new data
-      setLoadedAlbums((prevAlbums) => {
-        const updatedAlbums = [...prevAlbums];
-        const index = updatedAlbums.findIndex((a) => a._id === albumId);
-
+      setLoadedAlbums((prev) => {
+        const updated = [...prev];
+        const index = updated.findIndex((a) => a._id === albumId);
         if (index !== -1) {
-          updatedAlbums[index] = {
-            ...updatedAlbums[index],
+          updated[index] = {
+            ...updated[index],
             ...albumData,
             mediaItems: mediaItemsArray,
           };
         } else {
-          updatedAlbums.push({
+          updated.push({
             ...albumData,
             mediaItems: mediaItemsArray,
           });
         }
 
-        return updatedAlbums;
+        return updated;
       });
 
       // Set media items for the current album
@@ -500,8 +499,77 @@ const AlbumView = ({
 
                     {/* Album Navigation */}
                     <div className="relative">
-                      {/* Album Cover Image */}
-                      <div className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative">
+                      {/* Album Navigation Controls */}
+                      {totalAlbums > 1 && (
+                        <div className="flex justify-between items-center mb-3 bg-gray-800 rounded-lg p-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              prevAlbum();
+                            }}
+                            className="bg-gray-700 text-white px-3 py-1 rounded flex items-center space-x-1"
+                            aria-label="Previous album"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M15 19l-7-7 7-7"
+                              />
+                            </svg>
+                            <span>Previous Album</span>
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              nextAlbum();
+                            }}
+                            className="bg-gray-700 text-white px-3 py-1 rounded flex items-center space-x-1"
+                            aria-label="Next album"
+                          >
+                            <span>Next Album</span>
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Album Cover Image - Now Clickable */}
+                      <div
+                        className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Find the first media item (preferably a photo)
+                          if (mediaItems.length > 0) {
+                            // Try to find the first photo
+                            const firstPhotoIndex = mediaItems.findIndex(
+                              (item) => item.type === "photo"
+                            );
+                            // If there's a photo, show it, otherwise show the first item whatever it is
+                            const indexToShow =
+                              firstPhotoIndex !== -1 ? firstPhotoIndex : 0;
+                            enterMediaView(indexToShow);
+                          }
+                        }}
+                      >
                         <SafeImage
                           src={getAlbumCoverImage(currentAlbum)}
                           alt={currentAlbum?.name || "Album cover"}
@@ -525,54 +593,11 @@ const AlbumView = ({
                           </div>
                         )}
 
-                        {/* Navigation Controls */}
-                        {totalAlbums > 1 && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                prevAlbum();
-                              }}
-                              className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center"
-                              aria-label="Previous album"
-                            >
-                              <svg
-                                className="w-6 h-6"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M15 19l-7-7 7-7"
-                                />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                nextAlbum();
-                              }}
-                              className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center"
-                              aria-label="Next album"
-                            >
-                              <svg
-                                className="w-6 h-6"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth="2"
-                                  d="M9 5l7 7-7 7"
-                                />
-                              </svg>
-                            </button>
-                          </>
+                        {/* Visual indicator that this is clickable */}
+                        {mediaItems.length > 0 && (
+                          <div className="absolute top-2 right-2 bg-blue-500 bg-opacity-80 text-white text-xs rounded px-2 py-1">
+                            Click to view
+                          </div>
                         )}
                       </div>
                     </div>
@@ -730,84 +755,117 @@ const AlbumView = ({
       ) : (
         /* Media Detail View */
         <div
-          className="flex-grow flex flex-col items-center justify-center p-4 relative"
+          className="flex-grow flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Main media display */}
-          <div className="relative max-w-5xl max-h-[70vh] flex items-center justify-center">
-            {currentMedia?.type === "photo" ? (
-              <ZoomableImage
-                src={getImageUrl(currentMedia.content)}
-                alt={currentMedia.caption || `Image ${currentMediaIndex + 1}`}
-                className="max-w-full max-h-[70vh]"
-                zoomLevel={2.5}
-              />
-            ) : (
-              <div className="bg-white bg-opacity-10 p-6 rounded-lg max-w-full max-h-[70vh] overflow-auto">
-                <div className="text-white whitespace-pre-wrap">
-                  {currentMedia?.content || "No content available"}
-                </div>
-              </div>
-            )}
-
-            {/* Navigation arrows */}
-            {totalMediaInCurrentAlbum > 1 && (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    prevMedia();
-                  }}
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                  aria-label="Previous media"
+          {/* Navigation controls - outside of media content */}
+          {totalMediaInCurrentAlbum > 1 && (
+            <div className="flex justify-between items-center px-4 py-2 bg-gray-800">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  prevMedia();
+                }}
+                className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
+                aria-label={isPhoto ? "Previous photo" : "Previous note"}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  ←
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    nextMedia();
-                  }}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                  aria-label="Next media"
-                >
-                  →
-                </button>
-              </>
-            )}
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                <span>Previous</span>
+              </button>
 
-            {/* Caption overlay */}
-            {infoVisible && currentMedia?.caption && (
-              <div className="absolute left-0 right-0 bottom-0 bg-black bg-opacity-70 text-white p-3 text-center">
-                {currentMedia.caption}
+              <div className="text-gray-300 text-sm">
+                {currentMediaIndex + 1} / {totalMediaInCurrentAlbum}
               </div>
-            )}
 
-            {/* Counter */}
-            <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
-              {currentMediaIndex + 1} / {totalMediaInCurrentAlbum}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nextMedia();
+                }}
+                className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
+                aria-label={isPhoto ? "Next photo" : "Next note"}
+              >
+                <span>Next</span>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
             </div>
+          )}
 
-            {/* Set as cover button for photos */}
-            {isPhoto && (
-              <div className="absolute top-2 left-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAsCover(currentMedia._id);
-                  }}
-                  className="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700"
-                  title="Set as album cover"
-                >
-                  Set as Cover
-                </button>
+          {/* Main media display */}
+          <div className="flex-grow flex items-center justify-center p-4">
+            <div className="relative max-w-5xl max-h-[70vh] flex items-center justify-center">
+              {currentMedia?.type === "photo" ? (
+                <ZoomableImage
+                  src={getImageUrl(currentMedia.content)}
+                  alt={currentMedia.caption || `Image ${currentMediaIndex + 1}`}
+                  className="max-w-full max-h-[70vh]"
+                  zoomLevel={2.5}
+                />
+              ) : (
+                <div className="bg-white bg-opacity-10 p-6 rounded-lg max-w-full max-h-[70vh] overflow-auto">
+                  <div className="text-white whitespace-pre-wrap">
+                    {currentMedia?.content || "No content available"}
+                  </div>
+                </div>
+              )}
+
+              {/* Small counter in corner for reference */}
+              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
+                {currentMediaIndex + 1} / {totalMediaInCurrentAlbum}
               </div>
-            )}
+
+              {/* Set as cover button for photos */}
+              {isPhoto && (
+                <div className="absolute top-2 left-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAsCover(currentMedia._id);
+                    }}
+                    className="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700"
+                    title="Set as album cover"
+                  >
+                    Set as Cover
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Caption displayed outside the image */}
+          {infoVisible && currentMedia?.caption && (
+            <div className="mx-auto mb-4 bg-black bg-opacity-70 text-white p-3 text-center rounded max-w-5xl w-auto">
+              {currentMedia.caption}
+            </div>
+          )}
+
           {/* Thumbnails */}
-          {totalMediaInCurrentAlbum > 1 && (
-            <div className="mt-4 flex gap-2 overflow-x-auto pb-2 max-w-5xl">
+          <div className="px-4 pb-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 max-w-full justify-center mx-auto">
               {mediaItems.map((item, index) => {
                 // For photos, show image thumbnails
                 if (item.type === "photo") {
@@ -854,7 +912,7 @@ const AlbumView = ({
                 );
               })}
             </div>
-          )}
+          </div>
         </div>
       )}
 

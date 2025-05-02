@@ -4,7 +4,7 @@ import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 
 /**
  * AlbumOverlay component - Enhanced photo gallery that displays as an overlay
- * Fixed for better note display and improved navigation
+ * Updated with navigation controls outside the photo viewing area
  */
 const AlbumOverlay = ({ 
   isOpen, 
@@ -172,8 +172,8 @@ const AlbumOverlay = ({
         </div>
       </div>
       
-      {/* Navigation controls - displayed outside of content for notes */}
-      {!isPhoto && filteredMediaItems.length > 1 && (
+      {/* Navigation controls - displayed outside of content for both photos and notes */}
+      {filteredMediaItems.length > 1 && (
         <div className="flex justify-between items-center px-4 py-2 bg-gray-800">
           <button
             onClick={(e) => {
@@ -181,7 +181,7 @@ const AlbumOverlay = ({
               prevImage();
             }}
             className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
-            aria-label="Previous note"
+            aria-label={isPhoto ? "Previous photo" : "Previous note"}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -199,7 +199,7 @@ const AlbumOverlay = ({
               nextImage();
             }}
             className="bg-gray-700 text-white px-4 py-2 rounded flex items-center space-x-1"
-            aria-label="Next note"
+            aria-label={isPhoto ? "Next photo" : "Next note"}
           >
             <span>Next</span>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -236,46 +236,18 @@ const AlbumOverlay = ({
                 </div>
               )}
 
-              {/* Navigation arrows - only for photos, not for notes */}
-              {isPhoto && filteredMediaItems.length > 1 && (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      prevImage();
-                    }}
-                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                    aria-label="Previous image"
-                  >
-                    ←
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      nextImage();
-                    }}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white text-4xl bg-black bg-opacity-50 w-12 h-12 rounded-full flex items-center justify-center"
-                    aria-label="Next image"
-                  >
-                    →
-                  </button>
-                </>
-              )}
-              
-              {/* Caption overlay */}
-              {infoVisible && currentItem?.caption && (
-                <div className="absolute left-0 right-0 bottom-0 bg-black bg-opacity-70 text-white p-3 text-center">
-                  {currentItem.caption}
-                </div>
-              )}
-              
-              {/* Counter - only for photos */}
-              {isPhoto && (
-                <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
-                  {selectedIndex + 1} / {filteredMediaItems.length}
-                </div>
-              )}
+              {/* Counter - only shown for reference, not needed with the new navigation */}
+              <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-sm">
+                {selectedIndex + 1} / {filteredMediaItems.length}
+              </div>
             </div>
+            
+            {/* Caption now displayed outside the image */}
+            {infoVisible && currentItem?.caption && (
+              <div className="mt-3 bg-black bg-opacity-70 text-white p-3 text-center rounded max-w-5xl w-full">
+                {currentItem.caption}
+              </div>
+            )}
             
             {/* Media thumbnails */}
             {filteredMediaItems.length > 1 && (
@@ -343,10 +315,7 @@ const AlbumOverlay = ({
           )}
         </div>
         <div>
-          {isPhoto ? 
-            "Press ← → to navigate, ESC to close, i to toggle info" :
-            "Press ESC to close, i to toggle info"
-          }
+          Press ← → to navigate, ESC to close, i to toggle info
         </div>
       </div>
     </div>
