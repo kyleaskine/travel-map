@@ -2,58 +2,58 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { segmentDetailStyles } from "../../utils/styleUtils";
 import { formatDate } from "../../utils/dateUtils";
-import AlbumAPI from "../../services/albumApi";
 import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 import AlbumManager from "./AlbumManager";
-import AlbumView from "./AlbumView";
+import AlbumViewer from "./AlbumViewer";
+import useAlbums from "../../hooks/useAlbums";
 
 /**
- * Enhanced SegmentDetail component for album-centric architecture
+ * Unified ItemDetail component for both segments and accommodations
+ * Updated to use useAlbums hook
  */
-const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
-  // Default to albums tab as requested by the user
+const ItemDetail = ({ 
+  item, 
+  itemType, 
+  onClose, 
+  onUpdate, 
+  tripId 
+}) => {
+  // Default to albums tab
   const [activeTab, setActiveTab] = useState('albums');
-  const detailContainerRef = useRef(null); // Ref for the container element
-  
-  // Album state
-  const [albums, setAlbums] = useState([]);
-  const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
+  const detailContainerRef = useRef(null);
   
   // Album view state
   const [albumViewOpen, setAlbumViewOpen] = useState(false);
   const [selectedAlbumId, setSelectedAlbumId] = useState(null);
   
-  // Function to load albums
-  const loadAlbums = useCallback(async () => {
-    if (!tripId || !segment?.id) return;
+  // Extract item ID for API calls
+  const getItemId = useCallback(() => {
+    if (!item) return null;
     
-    setIsLoadingAlbums(true);
-    try {
-      const albumData = await AlbumAPI.getAlbumsByItem(tripId, 'segment', segment.id);
-      console.log(`Loaded ${albumData.length} albums for segment ${segment.id}`);
-      setAlbums(albumData);
-      
-      // If we have albums but none selected, select the first one
-      if (albumData.length > 0 && !selectedAlbumId) {
-        setSelectedAlbumId(albumData[0]._id);
-      }
-    } catch (error) {
-      console.error('Failed to load albums:', error);
-    } finally {
-      setIsLoadingAlbums(false);
+    if (itemType === 'segment') {
+      return item.id;
+    } else {
+      // For accommodations, use MongoDB _id if available, otherwise use location-based ID
+      return item._id || `stay-${item.location.replace(/\s+/g, '-').toLowerCase()}`;
     }
-  }, [tripId, segment?.id, selectedAlbumId]);
+  }, [item, itemType]);
   
-  // Load albums when the component mounts or when dependencies change
+  // Use the albums hook
+  const { albums, isLoading: isLoadingAlbums, loadAlbums } = useAlbums(
+    tripId, 
+    itemType === 'accommodation' ? 'stay' : itemType, 
+    getItemId()
+  );
+  
+  // Set initial selected album when albums load
   useEffect(() => {
-    if (tripId && segment && segment.id) {
-      loadAlbums();
+    if (albums.length > 0 && !selectedAlbumId) {
+      setSelectedAlbumId(albums[0]._id);
     }
-  }, [tripId, segment, segment?.id, loadAlbums]);
+  }, [albums, selectedAlbumId]);
   
-  // Improved mouse wheel event handling to prevent scrolling map
+  // Mouse wheel event handling to prevent scrolling map
   useEffect(() => {
-    // Use the ref directly instead of querySelector
     const detailContainer = detailContainerRef.current;
     
     if (!detailContainer) {
@@ -63,38 +63,27 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
     
     console.log("Adding wheel event listener to detail container");
     
-    // Function to prevent wheel events from propagating to map
     const preventWheelPropagation = (e) => {
-      // Stop the event from reaching the map
       e.stopPropagation();
       
-      // Get current scroll position and limits
       const { scrollHeight, clientHeight, scrollTop } = detailContainer;
       const isAtTop = scrollTop <= 0;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1; // -1 for rounding errors
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
       
-      // If at the limits and trying to scroll further in that direction, let the map handle it
-      // Otherwise, handle scrolling within the container
       if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
-        // At limits, allow default (map zoom)
         console.log("At scroll limit, allowing default");
       } else {
-        // Not at limits, prevent default and handle scroll manually
         e.preventDefault();
         console.log("Handling scroll within container");
-        
-        // Manual scroll (smoother than letting the browser do it)
         detailContainer.scrollTop += e.deltaY;
       }
     };
     
-    // Add event listener with capture phase to ensure it gets the event first
     detailContainer.addEventListener('wheel', preventWheelPropagation, { 
       passive: false,
-      capture: true  // This is important to capture the event before it reaches other handlers
+      capture: true
     });
     
-    // Clean up function
     return () => {
       console.log("Removing wheel event listener");
       if (detailContainer) {
@@ -106,9 +95,9 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
     };
   }, []);
   
-  if (!segment) return null;
+  if (!item) return null;
   
-  // Handle album creation - now updated to refresh data
+  // Handle album creation
   const handleAlbumCreated = async (createdAlbum) => {
     loadAlbums();
     return createdAlbum;
@@ -124,9 +113,8 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
   const handleRefreshNeeded = () => {
     loadAlbums();
     
-    // If onUpdate exists, notify parent that data may have changed
     if (onUpdate) {
-      onUpdate(segment);
+      onUpdate(item);
     }
   };
   
@@ -134,21 +122,39 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
   const handleViewAllAlbums = () => {
     setAlbumViewOpen(true);
   };
+  
+  // Get the title and color based on item type
+  const getTitle = () => {
+    if (itemType === 'segment') {
+      return item.transport;
+    } else {
+      return item.location;
+    }
+  };
+  
+  const getColor = () => {
+    if (itemType === 'segment') {
+      return segmentDetailStyles.typeDot(item.type).backgroundColor;
+    } else {
+      return '#8800ff';
+    }
+  };
 
   return (
     <>
       <div 
-        ref={detailContainerRef} // Add the ref here
+        ref={detailContainerRef}
         style={{
           ...segmentDetailStyles.container,
-          width: "360px", // Wider to accommodate form and albums
+          borderLeft: `4px solid ${getColor()}`,
+          width: "360px",
           maxHeight: "450px",
           overflowY: "auto"
         }}
       >
         <div style={segmentDetailStyles.header}>
           <h3 style={segmentDetailStyles.title}>
-            {segment.transport}
+            {getTitle()}
           </h3>
           <button
             style={segmentDetailStyles.closeButton}
@@ -160,14 +166,44 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
         </div>
         
         <div style={segmentDetailStyles.date}>
-          {formatDate(segment.date)}
+          {itemType === 'segment' 
+            ? formatDate(item.date)
+            : `${formatDate(item.dateStart)} - ${formatDate(item.dateEnd)}`}
         </div>
         
         <div style={segmentDetailStyles.typeIndicator}>
-          <div style={segmentDetailStyles.typeDot(segment.type)}></div>
-          <div style={segmentDetailStyles.typeText}>
-            {segment.type}
-          </div>
+          {itemType === 'segment' ? (
+            <>
+              <div style={segmentDetailStyles.typeDot(item.type)}></div>
+              <div style={segmentDetailStyles.typeText}>
+                {item.type}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{
+                width: "1rem",
+                height: "1rem",
+                backgroundColor: "#8800ff",
+                borderRadius: "9999px",
+                marginRight: "0.5rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <span style={{
+                  color: "white",
+                  fontSize: "0.75rem",
+                  fontWeight: "bold",
+                }}>
+                  H
+                </span>
+              </div>
+              <div style={segmentDetailStyles.typeText}>
+                Accommodation
+              </div>
+            </>
+          )}
         </div>
         
         {/* Tab Navigation */}
@@ -177,7 +213,7 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
               onClick={() => setActiveTab('details')}
               className={`py-2 px-3 text-sm font-medium ${
                 activeTab === 'details'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  ? `border-b-2 ${itemType === 'segment' ? 'border-blue-500 text-blue-600' : 'border-purple-500 text-purple-600'}`
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -187,13 +223,15 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
               onClick={() => setActiveTab('albums')}
               className={`py-2 px-3 text-sm font-medium ${
                 activeTab === 'albums'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  ? `border-b-2 ${itemType === 'segment' ? 'border-blue-500 text-blue-600' : 'border-purple-500 text-purple-600'}`
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               Albums
               {albums.length > 0 && (
-                <span className="ml-1 text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">
+                <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
+                  itemType === 'segment' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                }`}>
                   {albums.length}
                 </span>
               )}
@@ -204,17 +242,44 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
         {/* Details Tab Content */}
         {activeTab === 'details' && (
           <div style={segmentDetailStyles.details}>
-            <div style={segmentDetailStyles.detailItem}>
-              <strong>From:</strong> {segment.origin.name}
-              {segment.origin.code && ` (${segment.origin.code})`}
-            </div>
-            <div style={segmentDetailStyles.detailItem}>
-              <strong>To:</strong> {segment.destination.name}
-              {segment.destination.code && ` (${segment.destination.code})`}
-            </div>
-            {segment.notes && (
+            {/* Segment-specific details */}
+            {itemType === 'segment' && (
+              <>
+                <div style={segmentDetailStyles.detailItem}>
+                  <strong>From:</strong> {item.origin.name}
+                  {item.origin.code && ` (${item.origin.code})`}
+                </div>
+                <div style={segmentDetailStyles.detailItem}>
+                  <strong>To:</strong> {item.destination.name}
+                  {item.destination.code && ` (${item.destination.code})`}
+                </div>
+              </>
+            )}
+            
+            {/* Accommodation-specific details */}
+            {itemType === 'accommodation' && (
+              <>
+                <div style={segmentDetailStyles.detailItem}>
+                  <strong>Coordinates:</strong> {item.coordinates[0].toFixed(4)}, {item.coordinates[1].toFixed(4)}
+                </div>
+                {item.amenities && item.amenities.length > 0 && (
+                  <div style={segmentDetailStyles.detailItem}>
+                    <strong>Amenities:</strong> {item.amenities.join(', ')}
+                  </div>
+                )}
+              </>
+            )}
+            
+            {/* Common details */}
+            {item.notes && (
               <div style={segmentDetailStyles.detailItem}>
-                <strong>Notes:</strong> {segment.notes}
+                <strong>Notes:</strong> {item.notes}
+              </div>
+            )}
+            
+            {item._id && (
+              <div style={segmentDetailStyles.detailItem}>
+                <strong>ID:</strong> {item._id}
               </div>
             )}
             
@@ -224,7 +289,7 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="font-medium text-sm">Photo Albums</h4>
                   <button 
-                    className="text-blue-500 text-xs"
+                    className={itemType === 'segment' ? 'text-blue-500 text-xs' : 'text-purple-500 text-xs'}
                     onClick={handleViewAllAlbums}
                   >
                     View All
@@ -268,13 +333,15 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
           <div className="p-2">
             {isLoadingAlbums ? (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+                <div className={`animate-spin rounded-full h-10 w-10 border-b-2 ${
+                  itemType === 'segment' ? 'border-blue-500' : 'border-purple-500'
+                }`}></div>
               </div>
             ) : (
               <AlbumManager
                 tripId={tripId}
-                itemType="segment"
-                itemId={segment.id}
+                itemType={itemType === 'accommodation' ? 'stay' : itemType}
+                itemId={getItemId()}
                 albums={albums}
                 onAlbumCreated={handleAlbumCreated}
                 onAlbumSelected={handleAlbumSelected}
@@ -287,41 +354,30 @@ const SegmentDetail = ({ segment, onClose, onUpdate, tripId, openAlbum }) => {
       </div>
       
       {/* Album View (full-screen overlay) */}
-      <AlbumView
+      <AlbumViewer
         isOpen={albumViewOpen}
         onClose={() => setAlbumViewOpen(false)}
         albums={albums}
         selectedAlbumId={selectedAlbumId}
-        title={`Albums for ${segment.transport}`}
-        description={`From ${segment.origin.name} to ${segment.destination.name}`}
+        title={`Albums for ${getTitle()}`}
+        description={
+          itemType === 'segment'
+            ? `From ${item.origin.name} to ${item.destination.name}`
+            : `${formatDate(item.dateStart)} - ${formatDate(item.dateEnd)}`
+        }
+        onAlbumUpdated={handleRefreshNeeded}
+        mode="albums"
       />
     </>
   );
 };
 
-SegmentDetail.propTypes = {
-  segment: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    date: PropTypes.string.isRequired,
-    type: PropTypes.string.isRequired,
-    transport: PropTypes.string.isRequired,
-    origin: PropTypes.shape({
-      name: PropTypes.string.isRequired,
-      code: PropTypes.string,
-      coordinates: PropTypes.arrayOf(PropTypes.number).isRequired
-    }).isRequired,
-    destination: PropTypes.shape({
-      name: PropTypes.string.isRequired,
-      code: PropTypes.string,
-      coordinates: PropTypes.arrayOf(PropTypes.number).isRequired
-    }).isRequired,
-    notes: PropTypes.string,
-    defaultAlbumId: PropTypes.string
-  }),
+ItemDetail.propTypes = {
+  item: PropTypes.object.isRequired,
+  itemType: PropTypes.oneOf(['segment', 'accommodation']).isRequired,
   onClose: PropTypes.func.isRequired,
   onUpdate: PropTypes.func,
-  tripId: PropTypes.string,
-  openAlbum: PropTypes.func
+  tripId: PropTypes.string
 };
 
-export default SegmentDetail;
+export default ItemDetail;

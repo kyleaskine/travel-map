@@ -1,19 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { getImageUrl, getFallbackImageUrl } from '../../utils/imageUtils';
 import AlbumAPI from '../../services/albumApi';
 import MediaAPI from '../../services/mediaApi';
-// Import the new MediaUpload component
 import MediaUpload from './MediaUpload';
 
 /**
  * AlbumManager component for creating and managing media albums
- * Updated for album-centric architecture with external MediaUpload component
+ * Updated to receive albums as a prop instead of loading them
  */
 const AlbumManager = ({ 
   tripId, 
   itemType, 
   itemId,
+  albums = [],
   onAlbumCreated,
   onAlbumSelected,
   onRefreshNeeded,
@@ -24,9 +24,7 @@ const AlbumManager = ({
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   
   // Album state
-  const [albums, setAlbums] = useState([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState(null);
-  const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   
   // Media state
   const [mediaItems, setMediaItems] = useState([]);
@@ -38,58 +36,36 @@ const AlbumManager = ({
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Load albums for this item
-  const loadAlbums = useCallback(async () => {
-    if (!tripId || !itemType || !itemId) return;
-    
-    setIsLoadingAlbums(true);
-    try {
-      const albumData = await AlbumAPI.getAlbumsByItem(tripId, itemType, itemId);
-      console.log(`Loaded ${albumData.length} albums for ${itemType} ${itemId}`);
-      setAlbums(albumData);
-      
-      // If there's at least one album and none selected yet, select the first one
-      if (albumData.length > 0 && !selectedAlbumId) {
-        setSelectedAlbumId(albumData[0]._id);
-      }
-    } catch (error) {
-      console.error('Failed to load albums:', error);
-      setMessage(`Error loading albums: ${error.message}`);
-    } finally {
-      setIsLoadingAlbums(false);
+  // Set initial selected album
+  useEffect(() => {
+    if (albums.length > 0 && !selectedAlbumId) {
+      setSelectedAlbumId(albums[0]._id);
     }
-  }, [tripId, itemType, itemId, selectedAlbumId]);
+  }, [albums, selectedAlbumId]);
   
   // Load media for the selected album
-  const loadAlbumMedia = useCallback(async () => {
-    if (!selectedAlbumId) return;
+  useEffect(() => {
+    const loadAlbumMedia = async () => {
+      if (!selectedAlbumId) {
+        setMediaItems([]);
+        return;
+      }
+      
+      setIsLoadingMedia(true);
+      try {
+        const mediaData = await MediaAPI.getMediaByAlbum(selectedAlbumId);
+        console.log(`Loaded ${mediaData.length} media items for album ${selectedAlbumId}`);
+        setMediaItems(mediaData);
+      } catch (error) {
+        console.error('Failed to load media:', error);
+        setMessage(`Error loading media: ${error.message}`);
+      } finally {
+        setIsLoadingMedia(false);
+      }
+    };
     
-    setIsLoadingMedia(true);
-    try {
-      const mediaData = await MediaAPI.getMediaByAlbum(selectedAlbumId);
-      console.log(`Loaded ${mediaData.length} media items for album ${selectedAlbumId}`);
-      setMediaItems(mediaData);
-    } catch (error) {
-      console.error('Failed to load media:', error);
-      setMessage(`Error loading media: ${error.message}`);
-    } finally {
-      setIsLoadingMedia(false);
-    }
+    loadAlbumMedia();
   }, [selectedAlbumId]);
-  
-  // Load albums on mount
-  useEffect(() => {
-    loadAlbums();
-  }, [loadAlbums]);
-  
-  // Load media when selected album changes
-  useEffect(() => {
-    if (selectedAlbumId) {
-      loadAlbumMedia();
-    } else {
-      setMediaItems([]);
-    }
-  }, [selectedAlbumId, loadAlbumMedia]);
   
   // Reset form when opening/closing album creation
   useEffect(() => {
@@ -123,7 +99,6 @@ const AlbumManager = ({
     setMessage('');
     
     try {
-      // Create the album data object
       const albumData = {
         name: newAlbumName,
         description: newAlbumDescription,
@@ -132,30 +107,24 @@ const AlbumManager = ({
           type: itemType,
           itemId
         },
-        isDefault: albums.length === 0 // Make it default if it's the first album
+        isDefault: albums.length === 0
       };
       
       console.log('Creating album with data:', albumData);
       
-      // Create the album
       const createdAlbum = await AlbumAPI.createAlbum(albumData);
       console.log('Album created successfully:', createdAlbum);
       
-      // Update local state
-      setAlbums(prev => [...prev, createdAlbum]);
       setSelectedAlbumId(createdAlbum._id);
       
-      // Call the callback
       if (onAlbumCreated) {
         onAlbumCreated(createdAlbum);
       }
       
-      // Reset form and show success message
       setNewAlbumName('');
       setNewAlbumDescription('');
       setMessage('Album created successfully!');
       
-      // Close the creation form after a delay
       setTimeout(() => {
         setIsCreatingAlbum(false);
         setMessage('');
@@ -195,14 +164,9 @@ const AlbumManager = ({
       const createdAlbum = await AlbumAPI.createDefaultAlbum(tripId, itemType, itemId);
       console.log('Default album created:', createdAlbum);
       
-      // Update local state
-      setAlbums(prev => [...prev, createdAlbum]);
       setSelectedAlbumId(createdAlbum._id);
-      
-      // Show success message
       setMessage('Default album created!');
       
-      // Notify parent that refresh might be needed
       if (onRefreshNeeded) {
         onRefreshNeeded();
       }
@@ -216,17 +180,14 @@ const AlbumManager = ({
   
   // Handle media added from MediaUpload component
   const handleMediaAdded = (media, albumId) => {
-    // Update the local state if the media was added to the currently selected album
     if (albumId === selectedAlbumId) {
       setMediaItems(prev => [...prev, media]);
     }
     
-    // Notify parent component
     if (onRefreshNeeded) {
       onRefreshNeeded();
     }
     
-    // Close the upload form
     setIsUploadingMedia(false);
   };
   
@@ -361,7 +322,7 @@ const AlbumManager = ({
       )}
       
       {/* Empty state when no albums */}
-      {!isCreatingAlbum && !isUploadingMedia && albums.length === 0 && !isLoadingAlbums && (
+      {!isCreatingAlbum && !isUploadingMedia && albums.length === 0 && (
         <div className="text-center py-6 bg-gray-50 rounded-lg mb-4">
           <h3 className="font-medium text-lg mb-2">No Albums Yet</h3>
           <p className="text-gray-500 mb-4">
@@ -381,13 +342,6 @@ const AlbumManager = ({
               Create Default Album
             </button>
           </div>
-        </div>
-      )}
-      
-      {/* Loading State */}
-      {isLoadingAlbums && (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
         </div>
       )}
       
@@ -466,6 +420,7 @@ AlbumManager.propTypes = {
   tripId: PropTypes.string.isRequired,
   itemType: PropTypes.oneOf(['segment', 'stay']).isRequired,
   itemId: PropTypes.string.isRequired,
+  albums: PropTypes.array,
   onAlbumCreated: PropTypes.func,
   onAlbumSelected: PropTypes.func,
   onRefreshNeeded: PropTypes.func,

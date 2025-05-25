@@ -5,11 +5,11 @@ import { groupSegmentsByDate, formatDate } from "../../utils/dateUtils";
 import { debugLog } from "../../utils/mapCalculations";
 import TimelineSegment from "./TimelineSegment";
 import TimelineStay from "./TimelineStay";
-import AlbumView from "./AlbumView";
-import AlbumAPI from "../../services/albumApi";
+import AlbumViewer from "./AlbumViewer";
+import useAlbums from "../../hooks/useAlbums";
 
 /**
- * TimelinePanel component - Updated for album-centric architecture
+ * TimelinePanel component - Updated to use useAlbums hook
  */
 const TimelinePanel = ({ 
   travelData, 
@@ -27,60 +27,51 @@ const TimelinePanel = ({
   const [currentViewItem, setCurrentViewItem] = useState(null);
   const [currentViewAlbums, setCurrentViewAlbums] = useState([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState(null);
-  const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
   
-  // Load albums for all items - wrapped in useCallback with proper dependencies
+  // Use the albums hook for loading trip albums
+  const { loadTripAlbums, isLoading: isLoadingAlbums } = useAlbums(travelData?._id);
+  
+  // Load all item albums
   const loadAllItemAlbums = useCallback(async (items) => {
     if (!travelData || !travelData._id) return;
     
-    setIsLoadingAlbums(true);
-    
-    // Create a new item albums map
-    const newItemAlbums = {};
-    
     try {
+      const albumsByItem = await loadTripAlbums();
+      
+      // Create a map of itemId -> albums
+      const newItemAlbums = {};
+      
       // Initialize all items with empty album arrays
       items.forEach(item => {
         newItemAlbums[item.id] = [];
       });
       
-      // Load all albums for the trip
-      const allAlbums = await AlbumAPI.getAlbumsByTrip(travelData._id);
-      
-      // Group albums by item
-      allAlbums.forEach(album => {
-        if (album.relatedItem && album.relatedItem.itemId) {
-          // Find matching item by type and ID
-          const matchingItem = items.find(item => 
-            item.itemType === album.relatedItem.type && (
-              item.id === album.relatedItem.itemId || 
-              item._id === album.relatedItem.itemId
-            )
-          );
-          
-          if (matchingItem) {
-            if (!newItemAlbums[matchingItem.id]) {
-              newItemAlbums[matchingItem.id] = [];
-            }
-            
-            newItemAlbums[matchingItem.id].push(album);
-          }
+      // Map albums to items
+      Object.entries(albumsByItem).forEach(([key, albums]) => {
+        const [type, itemId] = key.split('-');
+        
+        const matchingItem = items.find(item => 
+          item.itemType === type && (
+            item.id === itemId || 
+            item._id === itemId
+          )
+        );
+        
+        if (matchingItem) {
+          newItemAlbums[matchingItem.id] = albums;
         }
       });
       
-      // Update state with all album data
       setItemAlbums(newItemAlbums);
       
-      // If we have a current view item, update its albums as well
+      // Update current view albums if needed
       if (currentViewItem) {
         setCurrentViewAlbums(newItemAlbums[currentViewItem.id] || []);
       }
     } catch (error) {
       console.error('Failed to load albums for items:', error);
-    } finally {
-      setIsLoadingAlbums(false);
     }
-  }, [travelData, currentViewItem]); // Added proper dependencies
+  }, [travelData, currentViewItem, loadTripAlbums]);
   
   // Process timeline data
   useEffect(() => {
@@ -128,7 +119,7 @@ const TimelinePanel = ({
     
     // Load albums for all segments and stays in the background
     loadAllItemAlbums(items);
-  }, [travelData, activeItem, loadAllItemAlbums]); // Added loadAllItemAlbums to dependency array
+  }, [travelData, activeItem, loadAllItemAlbums]);
   
   // Set up keyboard navigation
   useEffect(() => {
@@ -222,32 +213,14 @@ const TimelinePanel = ({
   const handleViewAlbums = async (item, albums) => {
     console.log('Viewing albums for item:', item.id, 'Albums:', albums);
     
-    // Make sure we have a complete album object with media items
     setCurrentViewItem(item);
     setCurrentViewAlbums(albums);
     
     // Pre-select the first album if available
     if (albums && albums.length > 0) {
       setSelectedAlbumId(albums[0]._id);
-      
-      // Pre-load album data to ensure we have media items
-      try {
-        const albumWithMedia = await AlbumAPI.getAlbumById(albums[0]._id);
-        if (albumWithMedia) {
-          // Update the albums array with the loaded album
-          const updatedAlbums = [...albums];
-          const index = updatedAlbums.findIndex(a => a._id === albumWithMedia._id);
-          if (index !== -1) {
-            updatedAlbums[index] = albumWithMedia;
-          }
-          setCurrentViewAlbums(updatedAlbums);
-        }
-      } catch (error) {
-        console.error('Failed to load album with media:', error);
-      }
     }
     
-    // Open the album view
     setAlbumViewOpen(true);
   };
   
@@ -257,7 +230,7 @@ const TimelinePanel = ({
     if (allTimelineItems.length > 0) {
       loadAllItemAlbums(allTimelineItems);
     }
-  }, [allTimelineItems, loadAllItemAlbums]); // Added loadAllItemAlbums to dependency array
+  }, [allTimelineItems, loadAllItemAlbums]);
 
   if (!travelData) return (
     <div style={{
@@ -357,7 +330,7 @@ const TimelinePanel = ({
       
       {/* Album View Overlay */}
       {currentViewItem && (
-        <AlbumView
+        <AlbumViewer
           isOpen={albumViewOpen}
           onClose={() => setAlbumViewOpen(false)}
           albums={currentViewAlbums}
@@ -373,6 +346,7 @@ const TimelinePanel = ({
               : `${formatDate(currentViewItem.dateStart)} - ${formatDate(currentViewItem.dateEnd)}`
           }
           onAlbumUpdated={handleAlbumUpdated}
+          mode="albums"
         />
       )}
     </>
